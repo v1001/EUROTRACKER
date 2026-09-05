@@ -5,6 +5,9 @@
 .vscode/ipch
 .pio/
 .vscode/
+notes/
+sprint.md
+ToDo.md
 *.o
 *.a
 *.elf
