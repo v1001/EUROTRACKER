@@ -1,0 +1,126 @@
+#ifndef SONG_DATA_H
+#define SONG_DATA_H
+
+#include "StepPattern.h"
+#include "Quantizer.h"
+#include <SPIFFS.h>
+
+class SongData {
+public:
+    // Constants for file format
+    static const uint32_t FILE_MAGIC = 0x534F4E47;   // "SONG"
+    static const uint8_t  FILE_VERSION = 2;   // was 1
+    static const uint8_t  OLD_FILE_VERSION = 0;
+
+    // Constants
+    static const int MAX_SONG_LENGTH = 64;
+    static const int DEFAULT_SONG_LENGTH = 4;
+    static const int NUM_TRACKS = 6;
+    static const int PATTERN_STEPS = 32;
+    
+    // Divider structure
+    struct Divider {
+        const char* text;
+        uint16_t value;
+    };
+    
+    SongData();
+    ~SongData();
+    
+    // Initialization
+    void init();
+    void clear();
+    
+    // File operations
+    bool load(const char* filename);
+    bool save(const char* filename);
+    void deleteFile(const char* filename);
+    bool exists(const char* filename);
+    
+    // Getters
+    int getLength() const { return _length; }
+    StepPattern& getPattern(int track, int step) { return _patterns[track][step]; }
+    const StepPattern& getPattern(int track, int step) const { return _patterns[track][step]; }
+    uint8_t getDividerIndex(int track, int step) const { return _dividerIndices[track][step]; }
+    const Divider& getDivider(int track, int step) const { return _dividers[_dividerIndices[track][step]]; }
+    uint16_t getDividerValue(int track, int step) const { return _dividers[_dividerIndices[track][step]].value; }
+    
+    // Setters
+    void setLength(int length);
+    void setDividerIndex(int track, int step, uint8_t index);
+    
+    // Pattern operations
+    void rotatePattern(int track, int step, int increment);
+    void randomizePattern(int track, int step);
+    void clearPattern(int track, int step);
+    
+    // Copy/Paste
+    void copyPattern(int track, int step);
+    void pastePattern(int track, int step);
+    bool hasCopiedData() const { return _hasCopiedData; }
+    
+    // Divider utilities
+    static const Divider& getDividerByIndex(int index) { return _dividers[index]; }
+    static int getNumDividers() { return NUM_DIVIDERS; }
+    static uint16_t getDividerValueByIndex(int index) { return _dividers[index].value; }
+    static const char* getDividerTextByIndex(int index) { return _dividers[index].text; }
+
+    // Step analysis
+    uint32_t getStepLengthInTicks(int step) const;
+    int getStepLongestPatternIndex(int step) const;
+
+    // Quantizer management
+    void setQuantizerEnabled(int track, bool enabled);
+    bool isQuantizerEnabled(int track) const;
+    Quantizer& getQuantizer(int track);
+    const Quantizer& getQuantizer(int track) const;
+    void setQuantizer(int track, const Quantizer& quantizer);
+
+    // Sequencer reset management
+    void setResetOnStep(int track, bool enabled);
+    bool getResetOnStep(int track) const;
+
+    // CV range per track (0-4095)
+    void setMinCV(int track, uint16_t minCV);
+    void setMaxCV(int track, uint16_t maxCV);
+    uint16_t getMinCV(int track) const;
+    uint16_t getMaxCV(int track) const;
+    
+    void setSwingAmount(int track, uint8_t amount);
+    uint8_t getSwingAmount(int track) const;
+   
+private:
+    static const int NUM_MELODIC_TRACKS = 4;  // Tracks 0-3 have CV output
+    static const int NUM_DIVIDERS = 9;
+    static const Divider _dividers[NUM_DIVIDERS];
+    
+    StepPattern _patterns[NUM_TRACKS][MAX_SONG_LENGTH];
+    uint8_t _dividerIndices[NUM_TRACKS][MAX_SONG_LENGTH];
+    int _length;
+    
+    // Copy/Paste buffers
+    StepPattern _copiedPattern;
+    uint8_t _copiedDivider;
+    bool _hasCopiedData;
+    
+    // Serialization helpers
+    size_t getSerializedSize() const;
+    void serialize(uint8_t* buffer, size_t& size) const;
+    bool deserialize(const uint8_t* buffer, size_t size);
+
+    // Quantizers for melodic tracks (0-3) only
+    bool _quantizerEnabled[4];  // Only for tracks 0-3
+    Quantizer _quantizers[4];    // Only for tracks 0-3
+
+    bool _resetOnStep[NUM_TRACKS];
+    uint8_t _swingAmount[NUM_TRACKS];  // 0-100%
+
+    // CV range for melodic tracks (0-3)
+    uint16_t _minCV[NUM_MELODIC_TRACKS];
+    uint16_t _maxCV[NUM_MELODIC_TRACKS];
+
+    bool deserializeOld(const uint8_t* buffer, size_t size);
+    
+};
+
+#endif

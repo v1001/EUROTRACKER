@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>EUROTRACKER – CV/Gate Sequencer Manual</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a1a;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            line-height: 1.5;
+            color: #e0e0e0;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #2a2a2a;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.4);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: #0f0f12;
+            padding: 0.8rem 1.5rem;
+            border-bottom: 3px solid #6a4e9b;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .logo h1 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, #e6b8ff, #9a7bcb);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .header-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .lang-switch {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .lang-btn {
+            background: #2a2a2a;
+            border: 1px solid #6a4e9b;
+            color: #e0e0e0;
+            padding: 0.3rem 1rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.2s;
+        }
+        .lang-btn.active {
+            background: #6a4e9b;
+            color: white;
+        }
+        .hamburger {
+            display: none;
+            background: #2a2a2a;
+            border: 1px solid #6a4e9b;
+            border-radius: 8px;
+            padding: 0.4rem 0.8rem;
+            cursor: pointer;
+            color: white;
+            font-size: 1.4rem;
+            line-height: 1;
+        }
+        .content-wrapper {
+            display: flex;
+            flex: 1;
+        }
+        .toc-sidebar {
+            width: 260px;
+            background: #1f1f24;
+            border-right: 1px solid #3a3a3a;
+            padding: 1.5rem 1rem;
+            flex-shrink: 0;
+        }
+        .toc-sidebar h3 {
+            color: #cfb5ff;
+            margin-bottom: 1rem;
+            font-size: 1.2rem;
+        }
+        .toc-sidebar ul {
+            list-style: none;
+        }
+        .toc-sidebar li {
+            margin: 0.6rem 0;
+        }
+        .toc-sidebar a {
+            color: #bbbbbb;
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: block;
+            padding: 0.2rem 0;
+            transition: 0.1s;
+            cursor: pointer;
+        }
+        .toc-sidebar a:hover {
+            color: #cfb5ff;
+            padding-left: 0.2rem;
+        }
+        .main-article {
+            flex: 1;
+            padding: 2rem 2rem 2.5rem;
+            overflow-x: auto;
+        }
+        .toc-drawer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100%;
+            background: #1a1a1f;
+            z-index: 1000;
+            padding: 2rem 1rem;
+            border-right: 1px solid #3a3a3a;
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            overflow-y: auto;
+        }
+        .toc-drawer.open {
+            transform: translateX(0);
+        }
+        .toc-drawer h3 {
+            color: #cfb5ff;
+            margin-bottom: 1.5rem;
+        }
+        .toc-drawer ul {
+            list-style: none;
+        }
+        .toc-drawer li {
+            margin: 0.8rem 0;
+        }
+        .toc-drawer a {
+            color: #ccc;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 999;
+        }
+        h2 {
+            font-size: 1.7rem;
+            margin: 1.8em 0 0.6em;
+            padding-bottom: 0.3em;
+            border-bottom: 2px solid #4e3e6e;
+            display: inline-block;
+            font-weight: 500;
+        }
+        h3 {
+            font-size: 1.3rem;
+            margin: 1.2em 0 0.4em;
+            color: #cfb5ff;
+        }
+        p, li { color: #cdcdcd; }
+        .key {
+            background: #1c1c22;
+            border: 1px solid #5c5c70;
+            border-radius: 10px;
+            padding: 0.2rem 0.6rem;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.2rem 0;
+            background: #1e1e24;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 0.7rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid #33333d;
+        }
+        th {
+            background: #2f2f3a;
+            font-weight: 600;
+            color: #e2d5ff;
+        }
+        code {
+            background: #15151c;
+            padding: 0.2rem 0.4rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #ffcf9a;
+        }
+        hr {
+            border: none;
+            height: 1px;
+            background: #3c3c48;
+            margin: 1.8rem 0;
+        }
+        footer {
+            background: #111116;
+            text-align: center;
+            padding: 1.2rem;
+            font-size: 0.75rem;
+            color: #7a7a8c;
+            border-top: 1px solid #2c2c34;
+        }
+        .lang-en, .lang-zh { display: none; }
+        .lang-en.active-lang, .lang-zh.active-lang { display: block; }
+        .section-block {
+            scroll-margin-top: 80px;
+        }
+        @media (max-width: 780px) {
+            .toc-sidebar { display: none; }
+            .hamburger { display: block; }
+            .main-article { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <div class="logo"><h1>⚡ EUROTRACKER</h1></div>
+        <div class="header-controls">
+            <div class="lang-switch">
+                <button class="lang-btn active" data-lang="en">EN</button>
+                <button class="lang-btn" data-lang="zh">中文</button>
+            </div>
+            <div class="hamburger" id="hamburgerBtn">☰</div>
+        </div>
+    </header>
+
+    <div class="content-wrapper">
+        <aside class="toc-sidebar" id="tocSidebar">
+            <h3 id="tocTitle">📑 Contents</h3>
+            <ul id="tocList"></ul>
+        </aside>
+
+        <main class="main-article" id="mainContent">
+            <!-- English content -->
+            <div id="lang-en" class="lang-en active-lang">
+                <div id="overview" class="section-block"><h2>⚡ Overview</h2><p><strong>EUROTRACKER</strong> is a 6‑track CV/Gate hardware sequencer for modular synthesizers. It combines a tracker‑style song grid with per‑step probability, ratchet, microtiming, swing, and full envelope control. All parameters are saved automatically to internal flash.</p></div>
+                <div id="hardware" class="section-block"><h2>🔌 Connections</h2><table><tr><th>Port</th><th>Function</th><th>Spec</th></tr><tr><td>⚡ CLOCK IN</td><td>External clock input</td><td>1–48 PPQN, 5V rising edge</td></tr><tr><td>🎛️ CV A … D</td><td>Control voltage outputs</td><td>0–5V, 12‑bit (0–4095)</td></tr><tr><td>🔘 GATE 1 … 6</td><td>Gate outputs</td><td>0–5V, programmable length</td></tr><tr><td>🕹️ Joystick + push</td><td>Navigation & selection</td><td>4 directions + centre click</td></tr><tr><td>🔘 ENC A / B + push</td><td>Value editing & copy/paste</td><td>Rotary encoders with click</td></tr><tr><td>💾 SAVE button</td><td>Playback control / save</td><td>Short press: start/stop/loop; Long press: save+stop</td></tr></table></div>
+                <div id="song-screen" class="section-block"><h2>🎼 Song Screen (main view)</h2><p>6 tracks × up to 64 song steps. Each step holds a 32‑step pattern (length 1‑32).</p><ul><li><span class="key">Joystick</span> – move cursor (track / step).</li><li><span class="key">ENC A rotate</span> – rotate current pattern (shift all steps).</li><li><span class="key">ENC B rotate</span> – change step divider (x4 … /4).</li><li><span class="key">ENC A click</span> – copy pattern to buffer.</li><li><span class="key">ENC B click</span> – paste pattern (if buffer exists).</li><li><span class="key">Joystick click</span> – enter pattern edit screen.</li><li><span class="key">Hold ENC A (500ms)</span> – open <strong>Track Settings</strong> menu.</li><li><span class="key">Hold joystick (500ms, stopped)</span> – open <strong>Global Settings</strong>.</li><li><span class="key">SAVE short press</span> – start/stop playback / loop step mode.</li><li><span class="key">SAVE long press</span> – stop playback and save current project.</li></ul></div>
+                <div id="pattern-screen" class="section-block"><h2>📀 Pattern Edit Screen</h2><p>32‑step grid (4 rows × 8 columns). Edit per‑step parameters.</p><ul><li><span class="key">Joystick</span> – move cursor.</li><li><span class="key">Joystick click</span> – toggle step on/off.</li><li><span class="key">ENC A click</span> – cycle edit mode: CV → Decay → Attack.</li><li><span class="key">ENC B click</span> – cycle edit mode: Probability → Gate Length → Ratchet → Microtiming.</li><li><span class="key">ENC rotate</span> – adjust current parameter.</li><li><span class="key">Hold joystick (500ms, stopped)</span> – open <strong>Pattern Settings</strong> (divider, length, transpose).</li><li><span class="key">SAVE short press</span> – exit to song screen.</li></ul></div>
+                <div id="track-settings" class="section-block"><h2>🎛️ Track Settings (per track)</h2><p>Hold <span class="key">ENC A</span> 500ms in song screen.</p><ul><li><strong>Quantizer</strong> – ON/OFF (tracks 1‑4). When ON, CV snaps to chromatic notes.</li><li><strong>CV Low / High</strong> – voltage range (0‑4095 → 0‑5V) used when quantizer OFF.</li><li><strong>Swing</strong> – 0‑100% shuffle (applied to odd steps, overridden by microtiming).</li><li><strong>Reset Step</strong> – RESET = AR envelope restarts from zero; KEEP = glide/portamento from previous CV.</li></ul></div>
+                <div id="pattern-settings" class="section-block"><h2>📋 Pattern Settings</h2><p>Hold joystick inside pattern edit (playback stopped).</p><ul><li><strong>Divider</strong> – clock division for the step (x4 … /4).</li><li><strong>Length</strong> – pattern length 1‑32 steps.</li><li><strong>Transpose</strong> – shift all CV values in pattern (±12 semitones).</li></ul></div>
+                <div id="global-settings" class="section-block"><h2>🌍 Global Settings</h2><p>Hold joystick in song screen (stopped).</p><ul><li><strong>Clock Source</strong> – Internal BPM / External PPQN.</li><li><strong>Internal BPM</strong> – 30‑300.</li><li><strong>External PPQN</strong> – 1,2,4,24,48.</li><li><strong>Autoplay</strong> – start playback on power‑up.</li><li><strong>Sync Start</strong> – wait for next clock tick before start.</li><li><strong>Joystick Speed</strong> – cursor sensitivity.</li><li><strong>Brightness</strong> – display contrast.</li><li><strong>Song Length</strong> – number of song steps (1‑64).</li><li><strong>New Song</strong> – clear current project (warning dialog).</li><li><strong>Save / Load Song</strong> – store to/from 8 internal slots.</li></ul></div>
+                <div id="envelopes" class="section-block"><h2>📈 Gate & CV Envelopes – Duration Mapping</h2><p><strong>Gate Length, Attack, Decay</strong> are stored as 0‑99 and scaled relative to the current 1/16th note duration. The mapping (from <code>calculateDurationUs()</code>):</p><ul><li><strong>0</strong> → minimum gate ~120 µs (short click).</li><li><strong>1‑32</strong> → linear from very short up to <strong>half of a 1/16th note</strong>.</li><li><strong>33‑96</strong> → from half a 1/16th note up to <strong>32 sixteenth notes (one full pattern of 32 steps)</strong>.</li><li><strong>97</strong> → 128 × halfStep → <strong>64 sixteenth notes (2 patterns)</strong>.</li><li><strong>98</strong> → 256 × halfStep → <strong>128 sixteenth notes (4 patterns)</strong>.</li><li><strong>99</strong> → 512 × halfStep → <strong>256 sixteenth notes (8 patterns)</strong>.</li></ul><p><strong>Example:</strong> At 120 BPM, a 1/16th note = 125 ms. Value 50 gives roughly half of that (62.5 ms). Value 96 gives exactly 32 sixteenth notes (4 seconds).</p><p><strong>Attack/Decay</strong> use the same mapping when <em>Reset Step = RESET</em> (AR envelope). When <em>Reset Step = KEEP</em>, Attack/Decay act as portamento time (rise/fall) relative to the same scale.</p></div>
+                <div id="clock" class="section-block"><h2>🎚️ Clock & Synchronization</h2><p>Internal BPM (30‑300) or external clock (1‑48 PPQN). The sequencer automatically switches between modes. <strong>Sync Start</strong> ensures playback begins on the next clock tick for tight sync with other devices.</p></div>
+                <div id="project" class="section-block"><h2>💾 Project Management</h2><p>Auto‑save every 15 seconds while stopped. Manual save with long press of SAVE button. Use <em>Save Song / Load Song</em> in global settings to store/recall projects to/from 8 internal slots (<code>/song1.song</code> … <code>/song8.song</code>). <em>New Song</em> clears all data after confirmation.</p></div>
+                <div id="shortcuts" class="section-block"><h2>⌨️ Quick Reference – Song Screen</h2><table><tr><th>Action</th><th>Control</th></tr><tr><td>Move cursor</td><td>Joystick X/Y</td></tr><tr><td>Rotate pattern</td><td>ENC A rotate</td></tr><tr><td>Change divider</td><td>ENC B rotate</td></tr><tr><td>Copy pattern</td><td>Click ENC A</td></tr><tr><td>Paste pattern</td><td>Click ENC B (if buffer exists)</td></tr><tr><td>Pattern edit mode</td><td>Click joystick</td></tr><tr><td>Track Settings menu</td><td>Hold ENC A (500ms)</td></tr><tr><td>Global Settings menu</td><td>Hold joystick (stopped)</td></tr><tr><td>Play / stop / loop step</td><td>Short press SAVE</td></tr><tr><td>Stop + save project</td><td>Long press SAVE</td></tr></table></div>
+            </div>
+
+            <!-- Chinese content -->
+            <div id="lang-zh" class="lang-zh">
+                <div id="overview" class="section-block"><h2>⚡ 概述</h2><p><strong>EUROTRACKER</strong> 是一款适用于模块合成器的 6 轨 CV/Gate 音序器。它结合了 tracker 风格的乐曲网格，支持每步概率、连击、微移、摇摆以及完整的包络控制。所有参数会自动保存到内部闪存。</p></div>
+                <div id="hardware" class="section-block"><h2>🔌 接口定义</h2><tr><tr><th>端口</th><th>功能</th><th>规格</th></tr><tr><td>⚡ CLOCK IN</td><td>外部时钟输入</td><td>1–48 PPQN, 5V 上升沿</td></tr><tr><td>🎛️ CV A … D</td><td>控制电压输出</td><td>0–5V, 12‑位 (0–4095)</td></tr><tr><td>🔘 GATE 1 … 6</td><td>门限输出</td><td>0–5V, 可编程长度</td></tr><tr><td>🕹️ 摇杆 + 按下</td><td>导航与确认</td><td>4 方向 + 中心点击</td></tr><tr><td>🔘 编码器 A / B + 按下</td><td>数值编辑 / 复制粘贴</td><td>旋转编码器带按键</td></tr><tr><td>💾 SAVE 键</td><td>播放控制 / 保存</td><td>短按：开始/停止/循环步；长按：保存+停止</td></tr></table></div>
+                <div id="song-screen" class="section-block"><h2>🎼 乐曲界面（主视图）</h2><p>6 轨 × 最多 64 个乐曲步。每个步包含一个 32 步的音序样式（长度 1‑32）。</p><ul><li><span class="key">摇杆</span> – 移动光标（轨道 / 步）。</li><li><span class="key">编码器 A 旋转</span> – 旋转当前样式（整体移位）。</li><li><span class="key">编码器 B 旋转</span> – 更改步除法器（x4 … /4）。</li><li><span class="key">单击编码器 A</span> – 复制样式到剪贴板。</li><li><span class="key">单击编码器 B</span> – 粘贴样式（若剪贴板有数据）。</li><li><span class="key">单击摇杆</span> – 进入样式编辑界面。</li><li><span class="key">长按编码器 A (500ms)</span> – 打开<strong>轨道设置</strong>菜单。</li><li><span class="key">长按摇杆 (500ms, 停止时)</span> – 打开<strong>全局设置</strong>。</li><li><span class="key">短按 SAVE</span> – 开始/停止播放 / 循环步模式。</li><li><span class="key">长按 SAVE</span> – 停止播放并保存当前工程。</li></ul></div>
+                <div id="pattern-screen" class="section-block"><h2>📀 样式编辑界面</h2><p>32 步网格 (4 行 × 8 列)。编辑每步的参数。</p><ul><li><span class="key">摇杆</span> – 移动光标。</li><li><span class="key">单击摇杆</span> – 切换步的启用/禁用。</li><li><span class="key">单击编码器 A</span> – 循环编辑模式：CV → 衰减 → 起音。</li><li><span class="key">单击编码器 B</span> – 循环编辑模式：概率 → 门限长度 → 连击 → 微移。</li><li><span class="key">旋转编码器</span> – 调整当前参数数值。</li><li><span class="key">长按摇杆 (500ms, 停止时)</span> – 打开<strong>样式设置</strong>（除法器、长度、移调）。</li><li><span class="key">短按 SAVE</span> – 退出返回乐曲界面。</li></ul></div>
+                <div id="track-settings" class="section-block"><h2>🎛️ 轨道设置（每条轨道独立）</h2><p>在乐曲界面长按 <span class="key">编码器 A</span> 500ms。</p><ul><li><strong>量化器</strong> – 开/关（轨道 1‑4）。开启时 CV 会量化到半音音阶。</li><li><strong>CV 低 / 高</strong> – 电压范围（0‑4095 → 0‑5V），仅在量化器关闭时使用。</li><li><strong>摇摆</strong> – 0‑100% shuffle（作用于奇数步，被微移覆盖）。</li><li><strong>步复位</strong> – RESET = AR 包络从零开始；KEEP = 从前一 CV 滑音/连奏。</li></ul></div>
+                <div id="pattern-settings" class="section-block"><h2>📋 样式设置</h2><p>在样式编辑界面长按摇杆（停止播放时）。</p><ul><li><strong>除法器</strong> – 该步的时钟分频 (x4 … /4)。</li><li><strong>长度</strong> – 样式步数 1‑32。</li><li><strong>移调</strong> – 整体移调样式内所有 CV 值（±12 半音）。</li></ul></div>
+                <div id="global-settings" class="section-block"><h2>🌍 全局设置</h2><p>在乐曲界面长按摇杆（停止时）。</p><ul><li><strong>时钟源</strong> – 内部 BPM / 外部 PPQN。</li><li><strong>内部 BPM</strong> – 30‑300。</li><li><strong>外部 PPQN</strong> – 1,2,4,24,48。</li><li><strong>自动播放</strong> – 开机自动开始播放。</li><li><strong>同步启动</strong> – 等待下一个时钟脉冲再开始。</li><li><strong>摇杆速度</strong> – 光标移动灵敏度。</li><li><strong>亮度</strong> – 屏幕对比度。</li><li><strong>乐曲长度</strong> – 乐曲步数 (1‑64)。</li><li><strong>新建工程</strong> – 清空当前工程（确认对话框）。</li><li><strong>保存/读取工程</strong> – 存储到 8 个内部插槽。</li></ul></div>
+                <div id="envelopes" class="section-block"><h2>📈 门限与 CV 包络 – 时长映射表</h2><p><strong>门限长度、起音、衰减</strong> 参数范围 0‑99，它们映射的实际时长基于当前的 1/16 音符时长。映射规则（来自 <code>calculateDurationUs()</code>）：</p><ul><li><strong>0</strong> → 最小门限约 120 µs（短促触发）。</li><li><strong>1‑32</strong> → 线性从极短到 <strong>半个 1/16 音符</strong>。</li><li><strong>33‑96</strong> → 从半个 1/16 音符到 <strong>32 个十六分音符（一个完整的 32 步样式）</strong>。</li><li><strong>97</strong> → 128 × 半步长 → <strong>64 个十六分音符（两个样式）</strong>。</li><li><strong>98</strong> → 256 × 半步长 → <strong>128 个十六分音符（四个样式）</strong>。</li><li><strong>99</strong> → 512 × 半步长 → <strong>256 个十六分音符（八个样式）</strong>。</li></ul><p><strong>示例</strong>：120 BPM 时，1/16 音符 = 125 ms。数值 50 对应约一半长度（62.5 ms）。数值 96 对应整整 32 个十六分音符（4 秒）。</p><p><strong>起音/衰减</strong> 在 <em>步复位 = RESET</em> 时使用相同的映射（AR 包络）。当 <em>步复位 = KEEP</em>，起音/衰减作为滑音时间（上升/下降），同样使用该比例。</p></div>
+                <div id="clock" class="section-block"><h2>🎚️ 时钟与同步</h2><p>支持内部 BPM（30‑300）或外部时钟（1‑48 PPQN）。音序器自动切换模式。<strong>同步启动</strong> 确保播放从下一个时钟脉冲开始，实现与其它设备的紧密同步。</p></div>
+                <div id="project" class="section-block"><h2>💾 工程管理</h2><p>停止状态下每隔 15 秒自动保存。长按 SAVE 键手动保存。在全局设置中使用 <em>保存工程 / 读取工程</em> 可将工程存储到 8 个内部插槽（<code>/song1.song</code> … <code>/song8.song</code>）。<em>新建工程</em> 会清空所有数据（需确认）。</p></div>
+                <div id="shortcuts" class="section-block"><h2>⌨️ 快速参考 – 乐曲界面</h2><table><tr><th>操作</th><th>控件</th></tr><tr><td>移动光标</td><td>摇杆 X/Y</td></tr><tr><td>旋转样式</td><td>旋转编码器 A</td></tr><tr><td>更改除法器</td><td>旋转编码器 B</td></tr><tr><td>复制样式</td><td>单击编码器 A</td></tr><tr><td>粘贴样式</td><td>单击编码器 B（剪贴板有内容时）</td></tr><tr><td>进入样式编辑</td><td>单击摇杆</td></tr><tr><td>轨道设置菜单</td><td>长按编码器 A (500ms)</td></tr><tr><td>全局设置菜单</td><td>长按摇杆（播放停止）</td></tr><tr><td>播放/停止/循环步</td><td>短按 SAVE</td></tr><tr><td>停止并保存工程</td><td>长按 SAVE</td></tr></table></div>
+            </div>
+            <hr>
+            <p style="font-size:0.9rem; text-align:center;">✨ EUROTRACKER – Designed for live performance and studio production ✨</p>
+        </main>
+    </div>
+    <footer>Firmware v2.0 – Dual‑core event‑based architecture</footer>
+</div>
+
+<div class="toc-drawer" id="tocDrawer">
+    <h3 id="drawerTitle">📑 Contents</h3>
+    <ul id="drawerList"></ul>
+</div>
+<div class="overlay" id="overlay"></div>
+
+<script>
+    const tocDataEn = [
+        { id: "overview", label: "Overview" },
+        { id: "hardware", label: "Connections" },
+        { id: "song-screen", label: "Song Screen" },
+        { id: "pattern-screen", label: "Pattern Edit" },
+        { id: "track-settings", label: "Track Settings" },
+        { id: "pattern-settings", label: "Pattern Settings" },
+        { id: "global-settings", label: "Global Settings" },
+        { id: "envelopes", label: "Gate & CV Envelopes" },
+        { id: "clock", label: "Clock & Sync" },
+        { id: "project", label: "Project Management" },
+        { id: "shortcuts", label: "Quick Reference" }
+    ];
+    const tocDataZh = [
+        { id: "overview", label: "概述" },
+        { id: "hardware", label: "接口定义" },
+        { id: "song-screen", label: "乐曲界面" },
+        { id: "pattern-screen", label: "样式编辑" },
+        { id: "track-settings", label: "轨道设置" },
+        { id: "pattern-settings", label: "样式设置" },
+        { id: "global-settings", label: "全局设置" },
+        { id: "envelopes", label: "门限与CV包络" },
+        { id: "clock", label: "时钟同步" },
+        { id: "project", label: "工程管理" },
+        { id: "shortcuts", label: "快捷键表" }
+    ];
+
+    function buildTOC(lang) {
+        const data = lang === 'en' ? tocDataEn : tocDataZh;
+        const tocList = document.getElementById('tocList');
+        const drawerList = document.getElementById('drawerList');
+        const tocTitle = document.getElementById('tocTitle');
+        const drawerTitle = document.getElementById('drawerTitle');
+        if (tocTitle) tocTitle.innerText = lang === 'en' ? '📑 Contents' : '📑 目录';
+        if (drawerTitle) drawerTitle.innerText = lang === 'en' ? '📑 Contents' : '📑 目录';
+        
+        function makeLinks(container) {
+            container.innerHTML = '';
+            data.forEach(item => {
+                const li = document.createElement('li');
+                const a = document.createElement('a');
+                a.textContent = item.label;
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    // Find the active language div and then the target section
+                    const activeLang = document.querySelector('.lang-en.active-lang, .lang-zh.active-lang');
+                    if (activeLang) {
+                        const target = activeLang.querySelector(`#${item.id}`);
+                        if (target) {
+                            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            // update URL hash without triggering jump
+                            history.pushState(null, null, `#${item.id}`);
+                        }
+                    }
+                    // close drawer if open
+                    const drawer = document.getElementById('tocDrawer');
+                    const overlayEl = document.getElementById('overlay');
+                    if (drawer.classList.contains('open')) {
+                        drawer.classList.remove('open');
+                        overlayEl.style.display = 'none';
+                    }
+                });
+                li.appendChild(a);
+                container.appendChild(li);
+            });
+        }
+        if (tocList) makeLinks(tocList);
+        if (drawerList) makeLinks(drawerList);
+    }
+
+    function setLanguage(lang) {
+        const enDiv = document.getElementById('lang-en');
+        const zhDiv = document.getElementById('lang-zh');
+        const btns = document.querySelectorAll('.lang-btn');
+        if (lang === 'en') {
+            enDiv.classList.add('active-lang');
+            zhDiv.classList.remove('active-lang');
+            btns.forEach(btn => {
+                if (btn.getAttribute('data-lang') === 'en') btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+        } else {
+            zhDiv.classList.add('active-lang');
+            enDiv.classList.remove('active-lang');
+            btns.forEach(btn => {
+                if (btn.getAttribute('data-lang') === 'zh') btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+        }
+        buildTOC(lang);
+        // restore hash if present
+        const hash = window.location.hash.substring(1);
+        if (hash) {
+            const activeLang = document.querySelector('.lang-en.active-lang, .lang-zh.active-lang');
+            const target = activeLang ? activeLang.querySelector(`#${hash}`) : null;
+            if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+        }
+    }
+
+    document.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.addEventListener('click', () => setLanguage(btn.getAttribute('data-lang')));
+    });
+
+    // hamburger drawer
+    const hamburger = document.getElementById('hamburgerBtn');
+    const drawer = document.getElementById('tocDrawer');
+    const overlayEl = document.getElementById('overlay');
+    if (hamburger && drawer && overlayEl) {
+        hamburger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = drawer.classList.contains('open');
+            if (isOpen) {
+                drawer.classList.remove('open');
+                overlayEl.style.display = 'none';
+            } else {
+                drawer.classList.add('open');
+                overlayEl.style.display = 'block';
+            }
+        });
+        overlayEl.addEventListener('click', () => {
+            drawer.classList.remove('open');
+            overlayEl.style.display = 'none';
+        });
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 780 && drawer.classList.contains('open')) {
+                drawer.classList.remove('open');
+                overlayEl.style.display = 'none';
+            }
+        });
+    }
+
+    // initial
+    setLanguage('en');
+</script>
+</body>
+</html>
