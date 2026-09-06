@@ -29,6 +29,9 @@ public:
     // Quantize a raw CV value to the nearest note's DAC value
     uint16_t quantize(uint16_t rawCV) const;
     
+    // Get the nearest note index for a raw CV value
+    uint8_t getNoteIndex(uint16_t rawCV) const;
+    
     // Clear and rebuild quantizer with custom range
     void rebuild(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes);
 

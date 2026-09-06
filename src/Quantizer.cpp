@@ -29,7 +29,16 @@ uint16_t Quantizer::getNoteDAC(uint8_t index) const {
 
 uint16_t Quantizer::quantize(uint16_t rawCV) const {
     if (_notes.empty()) {
-        return rawCV;  // No notes to quantize to
+        return rawCV;
+    }
+    
+    uint8_t bestIdx = getNoteIndex(rawCV);
+    return _notes[bestIdx].dacValue;
+}
+
+uint8_t Quantizer::getNoteIndex(uint16_t rawCV) const {
+    if (_notes.empty()) {
+        return 0;
     }
     
     uint8_t bestIdx = 0;
@@ -44,7 +53,7 @@ uint16_t Quantizer::quantize(uint16_t rawCV) const {
         }
     }
     
-    return _notes[bestIdx].dacValue;
+    return bestIdx;
 }
 
 void Quantizer::rebuild(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
