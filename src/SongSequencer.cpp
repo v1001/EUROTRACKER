@@ -75,17 +75,10 @@ void SongSequencer::initSequencers() {
         
         // Pass per-track gate queue
         _sequencers[i]->setGateQueue(&_gateQueues[i]);
-
-        // Pass resetOnStep flag
-        _sequencers[i]->setResetOnStep(_songData.getResetOnStep(i));
-
-        // Pass swing amount
-        _sequencers[i]->setSwingAmount(_songData.getSwingAmount(i));
         
         // Pass quantizer reference and CV queue for melodic tracks (0-3)
         if (i < 4) {
             _sequencers[i]->setQuantizerRef(&_songData.getQuantizer(i));
-            _sequencers[i]->setQuantizerEnabled(_songData.isQuantizerEnabled(i));
             _sequencers[i]->setCVQueue(&_cvQueues[i]);   // Pass corresponding CV queue
         } else {
             // Gate tracks (4-5) have no CV queue
@@ -256,8 +249,6 @@ void SongSequencer::updateSequencersFromStep(int step, bool resetPosition) {
         uint16_t clockDivider = _songData.getDividerValue(track, step);
         _sequencers[track]->begin(&_songData.getPattern(track, step));
         _sequencers[track]->setClockDivision(clockDivider);
-        _sequencers[track]->setResetOnStep(_songData.getResetOnStep(track));
-        _sequencers[track]->setQuantizerEnabled(_songData.isQuantizerEnabled(track));
         if(resetPosition){
             _sequencers[track]->resetPosition();
         }
@@ -287,11 +278,11 @@ void SongSequencer::handleStateMachine() {
 }
 
 void SongSequencer::saveCurrentProject() {
-    _songData.save(PROJECT_FILENAME);
+    _songData.save(PROJECT_FILENAME, _sequencers);
 }
 
 void SongSequencer::loadCurrentProject() {
-    if (!_songData.load(PROJECT_FILENAME)) {
+    if (!_songData.load(PROJECT_FILENAME, _sequencers)) {
         saveCurrentProject();
     }
     // Reset to first step
@@ -312,11 +303,11 @@ void SongSequencer::resetEncoderTracking() {
 }
 
 void SongSequencer::saveCurrentProjectToFile(const char* filename) {
-    _songData.save(filename);
+    _songData.save(filename, _sequencers);
 }
 
 void SongSequencer::loadCurrentProjectFromFile(const char* filename) {
-    if (_songData.load(filename)) {
+    if (_songData.load(filename, _sequencers)) {
         _currentPlayStep = 0;
         _currentStepTickCounter = 0;
         _stepTicksRemaining = _songData.getStepLengthInTicks(0);

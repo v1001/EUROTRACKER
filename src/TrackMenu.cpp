@@ -22,23 +22,22 @@ void TrackMenu::enter(int track) {
 }
 
 void TrackMenu::loadCurrentValue() {
-    SongData& songData = _songSequencer.getSongData();
-
+    StepSequencer* seq = _songSequencer.getSequencer(_track);
     switch (_selectedIndex) {
         case MENU_QUANTIZER_ENABLE:
-            _editValue = (_track < 4 && songData.isQuantizerEnabled(_track)) ? 1 : 0;
+            _editValue = (_track < 4 && seq->isQuantizerEnabled()) ? 1 : 0;
             break;
         case MENU_CV_RANGE_LOW:
-            _editValue = songData.getMinCV(_track);
+            _editValue = seq->getMinCV();
             break;
         case MENU_CV_RANGE_HIGH:
-            _editValue = songData.getMaxCV(_track);
+            _editValue = seq->getMaxCV();
             break;
         case MENU_SWING:
-            _editValue = songData.getSwingAmount(_track);
+            _editValue = seq->getSwingAmount();
             break;
         case MENU_RESET_ON_STEP:
-            _editValue = songData.getResetOnStep(_track) ? 1 : 0;
+            _editValue = seq->getResetOnStep() ? 1 : 0;
             break;
         default:
             break;
@@ -81,6 +80,8 @@ void TrackMenu::handleEditing() {
     bool encAChanged = (encPosA != _lastEncPosA);
     bool encBChanged = (encPosB != _lastEncPosB);
 
+    StepSequencer* seq = _songSequencer.getSequencer(_track);
+
     if (encAChanged || encBChanged) {
         int deltaA = (encAChanged) ? ((encPosA > _lastEncPosA) ? 1 : -1) : 0;
         int deltaB = (encBChanged) ? ((encPosB > _lastEncPosB) ? 1 : -1) : 0;
@@ -92,14 +93,14 @@ void TrackMenu::handleEditing() {
                 if (encAChanged) _editValue += deltaA * 50;
                 if (encBChanged) _editValue += deltaB;
                 if (_editValue < 0) _editValue = 0;
-                if (_editValue > songData.getMaxCV(_track) - 100) _editValue = songData.getMaxCV(_track) - 100;
+                if (_editValue > seq->getMaxCV() - 100) _editValue = seq->getMaxCV() - 100;
                 applySetting();
                 break;
             case MENU_CV_RANGE_HIGH:
                 if (encAChanged) _editValue += deltaA * 50;
                 if (encBChanged) _editValue += deltaB;
                 if (_editValue > 4095) _editValue = 4095;
-                if (_editValue < songData.getMinCV(_track) + 100) _editValue = songData.getMinCV(_track) + 100;
+                if (_editValue < seq->getMinCV() + 100) _editValue = seq->getMinCV() + 100;
                 applySetting();
                 break;
             case MENU_QUANTIZER_ENABLE:
@@ -149,25 +150,20 @@ void TrackMenu::applySetting() {
         case MENU_QUANTIZER_ENABLE:
             if (_track < 4) {
                 bool enabled = (_editValue == 1);
-                songData.setQuantizerEnabled(_track, enabled);
                 if (seq) seq->setQuantizerEnabled(enabled);
             }
             break;
         case MENU_CV_RANGE_LOW:
-            songData.setMinCV(_track, _editValue);
             if (seq && _track < 4) seq->setMinCV(_editValue);
             break;
         case MENU_CV_RANGE_HIGH:
-            songData.setMaxCV(_track, _editValue);
             if (seq && _track < 4) seq->setMaxCV(_editValue);
             break;
         case MENU_SWING:
-            songData.setSwingAmount(_track, _editValue);
             if (seq) seq->setSwingAmount(_editValue);
             break;
         case MENU_RESET_ON_STEP:
             bool enabled = (_editValue == 1);
-            songData.setResetOnStep(_track, enabled);
             if (seq) seq->setResetOnStep(enabled);
             break;
     }
@@ -176,7 +172,7 @@ void TrackMenu::applySetting() {
 void TrackMenu::draw() {
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
-    SongData& songData = _songSequencer.getSongData();
+    StepSequencer* seq = _songSequencer.getSequencer(_track);
 
     const char* items[] = {
         "Quantizer", "CV Low", "CV High", "Swing", "Reset Step", "Exit"
@@ -216,22 +212,22 @@ void TrackMenu::draw() {
             // Show saved value
             switch (i) {
                 case MENU_QUANTIZER_ENABLE:
-                    value = (_track < 4 && songData.isQuantizerEnabled(_track)) ? "ON" : "OFF";
+                    value = (_track < 4 && seq->isQuantizerEnabled()) ? "ON" : "OFF";
                     break;
                 case MENU_CV_RANGE_LOW:
-                    sprintf(valueBuffer, "%d", songData.getMinCV(_track));
+                    sprintf(valueBuffer, "%d", seq->getMinCV());
                     value = valueBuffer;
                     break;
                 case MENU_CV_RANGE_HIGH:
-                    sprintf(valueBuffer, "%d", songData.getMaxCV(_track));
+                    sprintf(valueBuffer, "%d", seq->getMaxCV());
                     value = valueBuffer;
                     break;
                 case MENU_SWING:
-                    sprintf(valueBuffer, "%d%%", songData.getSwingAmount(_track));
+                    sprintf(valueBuffer, "%d%%", seq->getSwingAmount());
                     value = valueBuffer;
                     break;
                 case MENU_RESET_ON_STEP:
-                    value = songData.getResetOnStep(_track) ? "RESET" : "KEEP";
+                    value = seq->getResetOnStep() ? "RESET" : "KEEP";
                     break;
                 default:
                     value = "";

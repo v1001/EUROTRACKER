@@ -31,16 +31,7 @@ void SongData::init() {
     _length = DEFAULT_SONG_LENGTH;
     _hasCopiedData = false;
 
-    for (int i = 0; i < NUM_MELODIC_TRACKS; i++) {
-        _minCV[i] = 0;
-        _maxCV[i] = 4095;
-        _quantizerEnabled[i] = true;
-        _quantizers[i].generateChromatic(0, 4095, 61);
-    }
-
     for (int track = 0; track < NUM_TRACKS; track++) {
-        _resetOnStep[track] = true;
-        _swingAmount[track] = 0;
         for (int step = 0; step < MAX_SONG_LENGTH; step++) {
             _patterns[track][step].init(PATTERN_STEPS);
             for (int s = 0; s < PATTERN_STEPS; s++) {
@@ -64,7 +55,7 @@ void SongData::clear() {
 // ----------------------------------------------------------------------
 // File operations (streaming, version 3)
 // ----------------------------------------------------------------------
-bool SongData::load(const char* filename) {
+bool SongData::load(const char* filename, StepSequencer** sequencers) {
     if (!SPIFFS.exists(filename)) {
         return false;
     }
@@ -169,7 +160,7 @@ bool SongData::load(const char* filename) {
             file.close();
             return false;
         }
-        _quantizerEnabled[track] = enabled != 0;
+        sequencers[track]->setQuantizerEnabled(enabled != 0);
         uint8_t numNotes;
         if (file.read(&numNotes, 1) != 1) {
             file.close();
@@ -200,8 +191,8 @@ bool SongData::load(const char* filename) {
             file.close();
             return false;
         }
-        _minCV[track] = minCV;
-        _maxCV[track] = maxCV;
+        sequencers[track]->setMinCV(minCV);
+        sequencers[track]->setMaxCV(maxCV);
     }
 
     // ---- Read reset flags ----
@@ -211,7 +202,7 @@ bool SongData::load(const char* filename) {
             file.close();
             return false;
         }
-        _resetOnStep[track] = flag != 0;
+        sequencers[track]->setResetOnStep(flag != 0);
     }
 
     // ---- Read swing amounts ----
@@ -221,7 +212,7 @@ bool SongData::load(const char* filename) {
             file.close();
             return false;
         }
-        _swingAmount[track] = swing;
+        sequencers[track]->setSwingAmount(swing);
     }
 
     // ---- NEW: Read quantizer range parameters (version 3) ----
@@ -249,7 +240,7 @@ bool SongData::load(const char* filename) {
     return true;
 }
 
-bool SongData::save(const char* filename) {
+bool SongData::save(const char* filename, StepSequencer** sequencers) {
     // Calculate required size (version 3: added 4 tracks * (2+2+1) bytes)
     size_t needed = 0;
     needed += 4 + 1 + 3;                     // magic + version + reserved
@@ -372,7 +363,7 @@ bool SongData::save(const char* filename) {
 
     // ---- Quantizers (enabled + notes) ----
     for (int track = 0; track < 4; track++) {
-        uint8_t enabled = _quantizerEnabled[track] ? 1 : 0;
+        uint8_t enabled = sequencers[track]->isQuantizerEnabled() ? 1 : 0;
         if (file.write(&enabled, 1) != 1) {
             file.close();
             return false;
@@ -398,8 +389,10 @@ bool SongData::save(const char* filename) {
 
     // ---- CV ranges (for editing) ----
     for (int track = 0; track < NUM_MELODIC_TRACKS; track++) {
-        if (file.write((uint8_t*)&_minCV[track], 2) != 2 ||
-            file.write((uint8_t*)&_maxCV[track], 2) != 2) {
+        uint16_t minCV = sequencers[track]->getMinCV();
+        uint16_t maxCV = sequencers[track]->getMaxCV();
+        if (file.write((uint8_t*)&minCV, 2) != 2 ||
+            file.write((uint8_t*)&maxCV, 2) != 2) {
             file.close();
             return false;
         }
@@ -407,7 +400,7 @@ bool SongData::save(const char* filename) {
 
     // ---- Reset flags ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        uint8_t flag = _resetOnStep[track] ? 1 : 0;
+        uint8_t flag = sequencers[track]->getResetOnStep() ? 1 : 0;
         if (file.write(&flag, 1) != 1) {
             file.close();
             return false;
@@ -416,7 +409,8 @@ bool SongData::save(const char* filename) {
 
     // ---- Swing amounts ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        if (file.write(&_swingAmount[track], 1) != 1) {
+        uint8_t swingAmount = sequencers[track]->getSwingAmount();
+        if (file.write(&swingAmount, 1) != 1) {
             file.close();
             return false;
         }
@@ -539,19 +533,6 @@ int SongData::getStepLongestPatternIndex(int step) const {
     return longestTrack;
 }
 
-void SongData::setQuantizerEnabled(int track, bool enabled) {
-    if (track >= 0 && track < 4) {
-        _quantizerEnabled[track] = enabled;
-    }
-}
-
-bool SongData::isQuantizerEnabled(int track) const {
-    if (track >= 0 && track < 4) {
-        return _quantizerEnabled[track];
-    }
-    return false;
-}
-
 Quantizer& SongData::getQuantizer(int track) {
     if (track >= 0 && track < 4) {
         return _quantizers[track];
@@ -572,60 +553,4 @@ void SongData::setQuantizer(int track, const Quantizer& quantizer) {
     if (track >= 0 && track < 4) {
         _quantizers[track] = quantizer;
     }
-}
-
-void SongData::setMinCV(int track, uint16_t minCV) {
-    if (track >= 0 && track < NUM_MELODIC_TRACKS) {
-        if (minCV <= _maxCV[track]) {
-            _minCV[track] = minCV;
-        }
-    }
-}
-
-void SongData::setMaxCV(int track, uint16_t maxCV) {
-    if (track >= 0 && track < NUM_MELODIC_TRACKS) {
-        if (maxCV >= _minCV[track]) {
-            _maxCV[track] = maxCV;
-        }
-    }
-}
-
-uint16_t SongData::getMinCV(int track) const {
-    if (track >= 0 && track < NUM_MELODIC_TRACKS) {
-        return _minCV[track];
-    }
-    return 0;
-}
-
-uint16_t SongData::getMaxCV(int track) const {
-    if (track >= 0 && track < NUM_MELODIC_TRACKS) {
-        return _maxCV[track];
-    }
-    return 4095;
-}
-
-void SongData::setResetOnStep(int track, bool enabled) {
-    if (track >= 0 && track < NUM_TRACKS) {
-        _resetOnStep[track] = enabled;
-    }
-}
-
-bool SongData::getResetOnStep(int track) const {
-    if (track >= 0 && track < NUM_TRACKS) {
-        return _resetOnStep[track];
-    }
-    return true;
-}
-
-void SongData::setSwingAmount(int track, uint8_t amount) {
-    if (track >= 0 && track < NUM_TRACKS) {
-        _swingAmount[track] = amount;
-    }
-}
-
-uint8_t SongData::getSwingAmount(int track) const {
-    if (track >= 0 && track < NUM_TRACKS) {
-        return _swingAmount[track];
-    }
-    return 0;
 }

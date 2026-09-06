@@ -25,12 +25,9 @@ public:
     void onEnterUI();
     
     uint8_t getCurrentStep() const { return _currentStep; }
-    uint8_t getSelectedStep() const { return _ui.getSelectedStep(); }
-    uint8_t getDisplayMode() const { return _ui.getDisplayMode(); }
-    uint8_t getEditModeEncA() const { return _ui.getEditModeEncA(); }
-    uint8_t getEditModeEncB() const { return _ui.getEditModeEncB(); }
     uint16_t getClockDivision() const { return _clockDivision; }
-    bool isCursorVisible() const { return _ui.isCursorVisible(); }
+    bool getResetOnStep() const {return _resetOnStep; }
+    uint8_t getSwingAmount() const {return _swingAmount; }
     
     uint16_t getCurrentDACValue();
     bool getCurrentGateOutput() const { return _currentGateOutput; }
