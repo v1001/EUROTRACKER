@@ -203,7 +203,8 @@ void StepSequencerUI::handleEncoders() {
                 if (_quantizerEnabled && _quantizer) {
                     // Quantized: change note index
                     uint16_t raw = _pattern->getCV(_selectedStep);
-                    uint8_t noteIndex = getNoteIndexFromRaw(raw);
+                    uint8_t noteIndex = _quantizer->getNoteIndex(raw);
+                    if (noteIndex >= _quantizer->getNumNotes()) noteIndex = _quantizer->getNumNotes() - 1;
                     noteIndex += change;
                     if (noteIndex >= _quantizer->getNumNotes()) noteIndex = _quantizer->getNumNotes() - 1;
                     uint16_t newRaw = _quantizer->getNoteDAC(noteIndex);
@@ -369,23 +370,6 @@ uint16_t StepSequencerUI::mapPercentToRaw(uint8_t percent) const {
     return map(percent, 0, 99, min, max);
 }
 
-uint8_t StepSequencerUI::getNoteIndexFromRaw(uint16_t raw) const {
-    if (!_quantizer) return 0;
-    uint8_t numNotes = _quantizer->getNumNotes();
-    if (numNotes == 0) return 0;
-    uint8_t best = 0;
-    uint16_t bestDiff = 0xFFFF;
-    for (uint8_t i = 0; i < numNotes; i++) {
-        uint16_t noteRaw = _quantizer->getNoteDAC(i);
-        uint16_t diff = (raw > noteRaw) ? (raw - noteRaw) : (noteRaw - raw);
-        if (diff < bestDiff) {
-            bestDiff = diff;
-            best = i;
-        }
-    }
-    return best;
-}
-
 const char* StepSequencerUI::getQuantizedNoteNameOrCV(uint16_t cvValue) {
     static char buffer[6];
     if (!_quantizerEnabled || !_quantizer) {
@@ -393,6 +377,6 @@ const char* StepSequencerUI::getQuantizedNoteNameOrCV(uint16_t cvValue) {
         sprintf(buffer, "%02d%%", percent);
         return buffer;
     }
-    uint8_t noteIndex = getNoteIndexFromRaw(cvValue);
+    uint8_t noteIndex = _quantizer->getNoteIndex(cvValue);
     return _quantizer->getNoteName(noteIndex);
 }

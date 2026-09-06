@@ -100,7 +100,6 @@ private:
     // CV conversion helpers
     uint8_t mapRawToPercent(uint16_t raw) const;
     uint16_t mapPercentToRaw(uint8_t percent) const;
-    uint8_t getNoteIndexFromRaw(uint16_t raw) const;
 
     Quantizer* _quantizer;
     bool _quantizerEnabled;

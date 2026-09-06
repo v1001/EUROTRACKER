@@ -175,9 +175,12 @@ void StepSequencer::onStep() {
             _cvQueue->pop();
         }
         
-        // CV is already a raw 16-bit DAC value (0-4095)
-        // Quantization happens during editing, not here
+        // CV is a raw 16-bit DAC value (0-4095)
+        // If quantizer is enabled, snap to nearest note during playback
         uint16_t targetDAC = _pattern->getCV(stepIndex);
+        if (_quantizerEnabled && _quantizer != nullptr) {
+            targetDAC = _quantizer->quantize(targetDAC);
+        }
         uint8_t attack = _pattern->getAttack(stepIndex);
         uint8_t decay = _pattern->getDecay(stepIndex);
         
