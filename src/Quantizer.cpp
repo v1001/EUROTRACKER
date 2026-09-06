@@ -7,6 +7,7 @@ const char* Quantizer::NOTE_NAMES[12] = {"c", "C", "d", "D", "e", "f", "F", "g",
 Quantizer::Quantizer() 
     : _startDAC(0), _endDAC(4095), _numNotes(61) {
     generateChromatic(0, 4095, 61);
+    _scaleActive = true;
 }
 
 void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
@@ -62,10 +63,31 @@ uint16_t Quantizer::quantize(uint16_t rawCV) const {
         return rawCV;
     }
     
+    // If scale is inactive, quantize to nearest note (chromatic)
+    if (!_scaleActive) {
+        uint8_t idx = getNoteIndex(rawCV);
+        return _notes[idx].dacValue;
+    }
+    
+    // Scale is active: find nearest note that is in scale
+    // First, check if there is at least one active note
+    bool hasActiveNote = false;
+    for (const auto& note : _notes) {
+        if (note.inScale) {
+            hasActiveNote = true;
+            break;
+        }
+    }
+    if (!hasActiveNote) {
+        return rawCV;  // No active notes – return unquantized
+    }
+    
     uint8_t bestIdx = 0;
     uint16_t bestDiff = 0xFFFF;
     
     for (uint8_t i = 0; i < _notes.size(); i++) {
+        if (!_notes[i].inScale) continue;  // skip inactive notes
+        
         uint16_t noteDac = _notes[i].dacValue;
         uint16_t diff = (rawCV > noteDac) ? (rawCV - noteDac) : (noteDac - rawCV);
         if (diff < bestDiff) {
