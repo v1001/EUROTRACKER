@@ -26,6 +26,9 @@ public:
     // Get number of notes in quantizer
     uint8_t getNumNotes() const { return _notes.size(); }
     
+    // Quantize a raw CV value to the nearest note's DAC value
+    uint16_t quantize(uint16_t rawCV) const;
+    
     // Clear and rebuild quantizer with custom range
     void rebuild(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes);
 

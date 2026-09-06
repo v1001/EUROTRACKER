@@ -27,6 +27,26 @@ uint16_t Quantizer::getNoteDAC(uint8_t index) const {
     return _notes[index].dacValue;
 }
 
+uint16_t Quantizer::quantize(uint16_t rawCV) const {
+    if (_notes.empty()) {
+        return rawCV;  // No notes to quantize to
+    }
+    
+    uint8_t bestIdx = 0;
+    uint16_t bestDiff = 0xFFFF;
+    
+    for (uint8_t i = 0; i < _notes.size(); i++) {
+        uint16_t noteDac = _notes[i].dacValue;
+        uint16_t diff = (rawCV > noteDac) ? (rawCV - noteDac) : (noteDac - rawCV);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestIdx = i;
+        }
+    }
+    
+    return _notes[bestIdx].dacValue;
+}
+
 void Quantizer::rebuild(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
     generateChromatic(startDAC, endDAC, numNotes);
 }
@@ -37,19 +57,13 @@ void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t nu
     
     uint16_t step = (endDAC - startDAC) / (numNotes - 1);
     
-    // Calculate starting octave based on note index distribution
-    // C4 is note index 0 in our 61-note range (C4 to C9)
-    // So octave = 4 + (noteIndex / 12)
-    // Note: C4 = index 0, C#4 = index 1, ..., B4 = index 11, C5 = index 12, etc.
-    
     for (uint8_t i = 0; i < numNotes; i++) {
         Note note;
         note.dacValue = startDAC + (i * step);
         
         uint8_t noteIndex = i % 12;
-        uint8_t octave = 4 + (i / 12);  // i=0-11 -> octave 4, i=12-23 -> octave 5, etc.
+        uint8_t octave = 4 + (i / 12);
         
-        // Format: "C4", "C#4", "D4", etc.
         snprintf(note.name, sizeof(note.name), "%s%d", NOTE_NAMES[noteIndex], octave);
         
         _notes.push_back(note);
