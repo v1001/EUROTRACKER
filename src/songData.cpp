@@ -22,6 +22,12 @@ SongData::SongData() : _length(0), _hasCopiedData(false) {
             _dividerIndices[track][step] = 4;  // Default to x1
         }
     }
+    // Initialize quantizer range arrays
+    for (int i = 0; i < 4; i++) {
+        _quantizerStartDAC[i] = 0;
+        _quantizerEndDAC[i] = 4095;
+        _quantizerNumNotes[i] = 61;
+    }
 }
 
 SongData::~SongData() {
@@ -35,7 +41,10 @@ void SongData::init() {
         _minCV[i] = 0;
         _maxCV[i] = 4095;
         _quantizerEnabled[i] = true;
-        _quantizers[i] = Quantizer();
+        _quantizerStartDAC[i] = 0;
+        _quantizerEndDAC[i] = 4095;
+        _quantizerNumNotes[i] = 61;
+        _quantizers[i].generateChromatic(0, 4095, 61);
     }
 
     for (int track = 0; track < NUM_TRACKS; track++) {
@@ -62,7 +71,7 @@ void SongData::clear() {
 }
 
 // ----------------------------------------------------------------------
-// File operations (streaming, version 2 only)
+// File operations (streaming, version 3)
 // ----------------------------------------------------------------------
 bool SongData::load(const char* filename) {
     if (!SPIFFS.exists(filename)) {
@@ -92,12 +101,6 @@ bool SongData::load(const char* filename) {
     }
     // skip reserved 3 bytes
     file.seek(file.position() + 3);
-
-    // Only version 2 is supported now
-    if (version != FILE_VERSION) {
-        file.close();
-        return false;
-    }
 
     // ---- Read song length ----
     if (file.read((uint8_t*)&_length, sizeof(_length)) != sizeof(_length)) {
@@ -168,7 +171,7 @@ bool SongData::load(const char* filename) {
         }
     }
 
-    // ---- Read quantizers ----
+    // ---- Read quantizers (enabled + notes) ----
     for (int track = 0; track < 4; track++) {
         uint8_t enabled;
         if (file.read(&enabled, 1) != 1) {
@@ -198,7 +201,7 @@ bool SongData::load(const char* filename) {
         }
     }
 
-    // ---- Read CV ranges ----
+    // ---- Read CV ranges (for editing) ----
     for (int track = 0; track < NUM_MELODIC_TRACKS; track++) {
         uint16_t minCV, maxCV;
         if (file.read((uint8_t*)&minCV, 2) != 2 ||
@@ -230,12 +233,39 @@ bool SongData::load(const char* filename) {
         _swingAmount[track] = swing;
     }
 
+    // ---- NEW: Read quantizer range parameters (version 3) ----
+    if (version >= 3) {
+        for (int track = 0; track < 4; track++) {
+            uint16_t startDAC, endDAC;
+            uint8_t numNotes;
+            if (file.read((uint8_t*)&startDAC, 2) != 2 ||
+                file.read((uint8_t*)&endDAC, 2) != 2 ||
+                file.read(&numNotes, 1) != 1) {
+                file.close();
+                return false;
+            }
+            _quantizerStartDAC[track] = startDAC;
+            _quantizerEndDAC[track] = endDAC;
+            _quantizerNumNotes[track] = numNotes;
+            // Rebuild quantizer with stored range
+            _quantizers[track].generateChromatic(startDAC, endDAC, numNotes);
+        }
+    } else {
+        // Version 2: set defaults and rebuild
+        for (int track = 0; track < 4; track++) {
+            _quantizerStartDAC[track] = 0;
+            _quantizerEndDAC[track] = 4095;
+            _quantizerNumNotes[track] = 61;
+            _quantizers[track].generateChromatic(0, 4095, 61);
+        }
+    }
+
     file.close();
     return true;
 }
 
 bool SongData::save(const char* filename) {
-    // Calculate required size (version 2: CV(2) + flags(1) + 6 other bytes = 9 per step)
+    // Calculate required size (version 3: added 4 tracks * (2+2+1) bytes)
     size_t needed = 0;
     needed += 4 + 1 + 3;                     // magic + version + reserved
     needed += sizeof(_length);
@@ -243,11 +273,12 @@ bool SongData::save(const char* filename) {
     needed += _length * NUM_TRACKS * PATTERN_STEPS * (2 + 1 + 1 + 1 + 1 + 1 + 1 + 1); // cv + flags + 6 others = 9
     needed += _length * NUM_TRACKS;           // pattern lengths
     for (int track = 0; track < 4; track++) {
-        needed += 1 + 1 + _quantizers[track].getNumNotes() * 6;
+        needed += 1 + 1 + _quantizers[track].getNumNotes() * (4 + 2); // enabled + numNotes + notes (4-byte name + 2-byte DAC)
     }
-    needed += 4 * 4;                          // CV ranges
+    needed += 4 * 4;                          // CV ranges (min/max)
     needed += NUM_TRACKS;                     // reset flags
     needed += NUM_TRACKS;                     // swing amounts
+    needed += 4 * (2 + 2 + 1);                // NEW: quantizer range parameters per track
 
     size_t total = SPIFFS.totalBytes();
     size_t used = SPIFFS.usedBytes();
@@ -304,7 +335,7 @@ bool SongData::save(const char* filename) {
                     file.close();
                     return false;
                 }
-                uint8_t flags = pattern.getOn(s) ? 0x01 : 0x00;   // bit 0 = ON, other bits reserved
+                uint8_t flags = pattern.getOn(s) ? 0x01 : 0x00;   // bit 0 = ON
                 if (file.write(&flags, 1) != 1) {
                     file.close();
                     return false;
@@ -354,7 +385,7 @@ bool SongData::save(const char* filename) {
         }
     }
 
-    // ---- Quantizers ----
+    // ---- Quantizers (enabled + notes) ----
     for (int track = 0; track < 4; track++) {
         uint8_t enabled = _quantizerEnabled[track] ? 1 : 0;
         if (file.write(&enabled, 1) != 1) {
@@ -380,7 +411,7 @@ bool SongData::save(const char* filename) {
         }
     }
 
-    // ---- CV ranges ----
+    // ---- CV ranges (for editing) ----
     for (int track = 0; track < NUM_MELODIC_TRACKS; track++) {
         if (file.write((uint8_t*)&_minCV[track], 2) != 2 ||
             file.write((uint8_t*)&_maxCV[track], 2) != 2) {
@@ -401,6 +432,16 @@ bool SongData::save(const char* filename) {
     // ---- Swing amounts ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         if (file.write(&_swingAmount[track], 1) != 1) {
+            file.close();
+            return false;
+        }
+    }
+
+    // ---- NEW: Quantizer range parameters (startDAC, endDAC, numNotes) ----
+    for (int track = 0; track < 4; track++) {
+        if (file.write((uint8_t*)&_quantizerStartDAC[track], 2) != 2 ||
+            file.write((uint8_t*)&_quantizerEndDAC[track], 2) != 2 ||
+            file.write(&_quantizerNumNotes[track], 1) != 1) {
             file.close();
             return false;
         }

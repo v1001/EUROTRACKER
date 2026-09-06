@@ -9,7 +9,7 @@ class SongData {
 public:
     // Constants for file format
     static const uint32_t FILE_MAGIC = 0x534F4E47;   // "SONG"
-    static const uint8_t  FILE_VERSION = 2;   // was 1
+    static const uint8_t  FILE_VERSION = 3;          // bumped to 3
     static const uint8_t  OLD_FILE_VERSION = 0;
 
     // Constants
@@ -80,7 +80,7 @@ public:
     void setResetOnStep(int track, bool enabled);
     bool getResetOnStep(int track) const;
 
-    // CV range per track (0-4095)
+    // CV range per track (0-4095) – for editing
     void setMinCV(int track, uint16_t minCV);
     void setMaxCV(int track, uint16_t maxCV);
     uint16_t getMinCV(int track) const;
@@ -103,24 +103,28 @@ private:
     uint8_t _copiedDivider;
     bool _hasCopiedData;
     
-    // Serialization helpers
-    size_t getSerializedSize() const;
-    void serialize(uint8_t* buffer, size_t& size) const;
-    bool deserialize(const uint8_t* buffer, size_t size);
-
     // Quantizers for melodic tracks (0-3) only
-    bool _quantizerEnabled[4];  // Only for tracks 0-3
-    Quantizer _quantizers[4];    // Only for tracks 0-3
+    bool _quantizerEnabled[4];
+    Quantizer _quantizers[4];
+    
+    // NEW: Storage for quantizer range parameters (persistent)
+    uint16_t _quantizerStartDAC[4];
+    uint16_t _quantizerEndDAC[4];
+    uint8_t _quantizerNumNotes[4];
 
     bool _resetOnStep[NUM_TRACKS];
     uint8_t _swingAmount[NUM_TRACKS];  // 0-100%
 
-    // CV range for melodic tracks (0-3)
+    // CV range for melodic tracks (0-3) – used for editing only
     uint16_t _minCV[NUM_MELODIC_TRACKS];
     uint16_t _maxCV[NUM_MELODIC_TRACKS];
 
     bool deserializeOld(const uint8_t* buffer, size_t size);
     
+    // Serialization helpers (still used for old format deserialization, but not for streaming)
+    size_t getSerializedSize() const;
+    void serialize(uint8_t* buffer, size_t& size) const;
+    bool deserialize(const uint8_t* buffer, size_t size);
 };
 
 #endif
