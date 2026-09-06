@@ -44,8 +44,6 @@ public:
     void setEditModeEncA(uint8_t mode) { _ui.setEditModeEncA(mode); }
     void setEditModeEncB(uint8_t mode) { _ui.setEditModeEncB(mode); }
 
-    void resetEncoderTracking();
-
     // Quantizer settings
     void setQuantizerEnabled(bool enabled);
     bool isQuantizerEnabled() const { return _quantizerEnabled; }
