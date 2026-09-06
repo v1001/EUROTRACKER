@@ -1,9 +1,39 @@
 #include "Quantizer.h"
+#include <cstring>
 
+// Natural notes: lowercase, sharp notes: uppercase (one character each)
 const char* Quantizer::NOTE_NAMES[12] = {"c", "C", "d", "D", "e", "f", "F", "g", "G", "a", "A", "b"};
 
-Quantizer::Quantizer() {
+Quantizer::Quantizer() 
+    : _startDAC(0), _endDAC(4095), _numNotes(61) {
     generateChromatic(0, 4095, 61);
+}
+
+void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
+    _notes.clear();
+    _notes.reserve(numNotes);
+    _startDAC = startDAC;
+    _endDAC = endDAC;
+    _numNotes = numNotes;
+    
+    if (numNotes < 2) return;
+    
+    uint16_t step = (endDAC - startDAC) / (numNotes - 1);
+    
+    for (uint8_t i = 0; i < numNotes; i++) {
+        Note note;
+        note.dacValue = startDAC + (i * step);
+        note.inScale = true;
+        
+        uint8_t noteIndex = i % 12;
+        uint8_t octave = 4 + (i / 12);
+        
+        // Format: note name (one char) + octave (one digit)
+        // e.g., "c4", "C4", "d4", "D4", "e4", "f4", "F4", ...
+        snprintf(note.name, sizeof(note.name), "%s%d", NOTE_NAMES[noteIndex], octave);
+        
+        _notes.push_back(note);
+    }
 }
 
 const Quantizer::Note& Quantizer::getNote(uint8_t index) const {
@@ -32,7 +62,18 @@ uint16_t Quantizer::quantize(uint16_t rawCV) const {
         return rawCV;
     }
     
-    uint8_t bestIdx = getNoteIndex(rawCV);
+    uint8_t bestIdx = 0;
+    uint16_t bestDiff = 0xFFFF;
+    
+    for (uint8_t i = 0; i < _notes.size(); i++) {
+        uint16_t noteDac = _notes[i].dacValue;
+        uint16_t diff = (rawCV > noteDac) ? (rawCV - noteDac) : (noteDac - rawCV);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestIdx = i;
+        }
+    }
+    
     return _notes[bestIdx].dacValue;
 }
 
@@ -56,37 +97,15 @@ uint8_t Quantizer::getNoteIndex(uint16_t rawCV) const {
     return bestIdx;
 }
 
-void Quantizer::rebuild(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
-    generateChromatic(startDAC, endDAC, numNotes);
-}
-
-void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
-    _notes.clear();
-    _notes.reserve(numNotes);
-    
-    uint16_t step = (endDAC - startDAC) / (numNotes - 1);
-    
-    for (uint8_t i = 0; i < numNotes; i++) {
-        Note note;
-        note.dacValue = startDAC + (i * step);
-        
-        uint8_t noteIndex = i % 12;
-        uint8_t octave = 4 + (i / 12);
-        
-        snprintf(note.name, sizeof(note.name), "%s%d", NOTE_NAMES[noteIndex], octave);
-        
-        _notes.push_back(note);
-    }
-}
-
 void Quantizer::clearNotes() {
     _notes.clear();
 }
 
 void Quantizer::addNote(const char* name, uint16_t dacValue) {
     Note note;
-    strncpy(note.name, name, 4);
-    note.name[4] = '\0';
+    strncpy(note.name, name, sizeof(note.name) - 1);
+    note.name[sizeof(note.name) - 1] = '\0';
     note.dacValue = dacValue;
+    note.inScale = true;
     _notes.push_back(note);
 }
