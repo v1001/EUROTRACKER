@@ -22,12 +22,6 @@ SongData::SongData() : _length(0), _hasCopiedData(false) {
             _dividerIndices[track][step] = 4;  // Default to x1
         }
     }
-    // Initialize quantizer range arrays
-    for (int i = 0; i < 4; i++) {
-        _quantizerStartDAC[i] = 0;
-        _quantizerEndDAC[i] = 4095;
-        _quantizerNumNotes[i] = 61;
-    }
 }
 
 SongData::~SongData() {
@@ -41,9 +35,6 @@ void SongData::init() {
         _minCV[i] = 0;
         _maxCV[i] = 4095;
         _quantizerEnabled[i] = true;
-        _quantizerStartDAC[i] = 0;
-        _quantizerEndDAC[i] = 4095;
-        _quantizerNumNotes[i] = 61;
         _quantizers[i].generateChromatic(0, 4095, 61);
     }
 
@@ -244,18 +235,12 @@ bool SongData::load(const char* filename) {
                 file.close();
                 return false;
             }
-            _quantizerStartDAC[track] = startDAC;
-            _quantizerEndDAC[track] = endDAC;
-            _quantizerNumNotes[track] = numNotes;
             // Rebuild quantizer with stored range
             _quantizers[track].generateChromatic(startDAC, endDAC, numNotes);
         }
     } else {
         // Version 2: set defaults and rebuild
         for (int track = 0; track < 4; track++) {
-            _quantizerStartDAC[track] = 0;
-            _quantizerEndDAC[track] = 4095;
-            _quantizerNumNotes[track] = 61;
             _quantizers[track].generateChromatic(0, 4095, 61);
         }
     }
@@ -439,9 +424,12 @@ bool SongData::save(const char* filename) {
 
     // ---- NEW: Quantizer range parameters (startDAC, endDAC, numNotes) ----
     for (int track = 0; track < 4; track++) {
-        if (file.write((uint8_t*)&_quantizerStartDAC[track], 2) != 2 ||
-            file.write((uint8_t*)&_quantizerEndDAC[track], 2) != 2 ||
-            file.write(&_quantizerNumNotes[track], 1) != 1) {
+        uint8_t startDAC = _quantizers[track].getStartDAC();
+        uint8_t endDAC = _quantizers[track].getEndDAC();
+        uint8_t numNotes = _quantizers[track].getNumNotes();
+        if (file.write((uint8_t*)&startDAC, 2) != 2 ||
+            file.write((uint8_t*)&endDAC, 2) != 2 ||
+            file.write((uint8_t*)&numNotes, 1) != 1) {
             file.close();
             return false;
         }

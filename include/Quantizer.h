@@ -51,6 +51,7 @@ private:
     uint16_t _startDAC;
     uint16_t _endDAC;
     uint8_t _numNotes;
+    bool _scaleActive;
 };
 
 #endif // QUANTIZER_H

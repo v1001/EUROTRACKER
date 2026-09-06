@@ -60,18 +60,6 @@ public:
     void setCVQueue(CVQueue* queue) { _cvQueue = queue; }
     
 private:
-    static const int ROWS = 4;
-    static const int COLS = 8;
-    static const int TOTAL_STEPS = 32;
-    static const int RECT_WIDTH = 14;
-    static const int RECT_HEIGHT = 10;
-    static const int CELL_SPACING_X = 16;
-    static const int CELL_SPACING_Y = 12;
-    static const int STATUS_BAR_Y = 54;
-    static const int MOVE_DELAY = 200;
-    static const int CURSOR_BLINK_INTERVAL = 300;
-    static const int ENCODER_TIMEOUT = 1000;
-    static const int MIN_REDRAW_INTERVAL = 40;
     static const uint16_t MAX_CLOCK_DIVISION = 192;
     
     DisplayManager& _display;

@@ -106,11 +106,6 @@ private:
     // Quantizers for melodic tracks (0-3) only
     bool _quantizerEnabled[4];
     Quantizer _quantizers[4];
-    
-    // NEW: Storage for quantizer range parameters (persistent)
-    uint16_t _quantizerStartDAC[4];
-    uint16_t _quantizerEndDAC[4];
-    uint8_t _quantizerNumNotes[4];
 
     bool _resetOnStep[NUM_TRACKS];
     uint8_t _swingAmount[NUM_TRACKS];  // 0-100%
@@ -118,13 +113,6 @@ private:
     // CV range for melodic tracks (0-3) – used for editing only
     uint16_t _minCV[NUM_MELODIC_TRACKS];
     uint16_t _maxCV[NUM_MELODIC_TRACKS];
-
-    bool deserializeOld(const uint8_t* buffer, size_t size);
-    
-    // Serialization helpers (still used for old format deserialization, but not for streaming)
-    size_t getSerializedSize() const;
-    void serialize(uint8_t* buffer, size_t& size) const;
-    bool deserialize(const uint8_t* buffer, size_t size);
 };
 
 #endif
