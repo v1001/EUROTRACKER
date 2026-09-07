@@ -33,9 +33,13 @@ private:
     SongSequencer& _songSequencer;
 
     int _track;
-    int _selectedIndex;
+    int _selectedIndex;          // index into _itemIndices
     int _editValue;
     bool _exitRequested;
+
+    // Dynamic item list
+    int _numItems;
+    MenuItem _itemIndices[6];    // max 6 items
 
     // Navigation timing
     unsigned long _lastNavTime;
@@ -48,6 +52,7 @@ private:
     void handleEditing();
     void applySetting();
     void loadCurrentValue();
+    void buildItemList();
 };
 
 #endif

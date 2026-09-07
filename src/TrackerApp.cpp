@@ -208,9 +208,22 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
         return;
     }
 
+    // Track Menu exit via joystick selection (Exit item)
+    if (_currentUIState == STATE_TRACK_MENU && _trackMenu) {
+        auto* menu = static_cast<TrackMenu*>(_trackMenu);
+        if (menu->shouldExit()) {
+            menu->clearExitFlag();
+            _currentUIState = STATE_SONG_UI;
+            _songSequencer.resetEncoderTracking();
+            return;
+        }
+    }
+
     // Track Menu -> Song UI (save button)
     if (_currentUIState == STATE_TRACK_MENU && _userInput.save_button.just_pressed) {
         if (_trackMenu) static_cast<TrackMenu*>(_trackMenu)->saveAndExit();
+        // The saveAndExit() sets _exitRequested, so the above check will also trigger.
+        // To avoid double transition, we can also clear the flag here, but we can just return.
         _currentUIState = STATE_SONG_UI;
         _songSequencer.resetEncoderTracking();
         return;
