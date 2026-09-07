@@ -5,9 +5,8 @@
 const char* Quantizer::NOTE_NAMES[12] = {"c", "C", "d", "D", "e", "f", "F", "g", "G", "a", "A", "b"};
 
 Quantizer::Quantizer() 
-    : _startDAC(0), _endDAC(4095), _numNotes(61) {
+    : _startDAC(0), _endDAC(4095), _numNotes(61), _scaleActive(true) {
     generateChromatic(0, 4095, 61);
-    _scaleActive = true;
 }
 
 void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
@@ -29,12 +28,47 @@ void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t nu
         uint8_t noteIndex = i % 12;
         uint8_t octave = 4 + (i / 12);
         
-        // Format: note name (one char) + octave (one digit)
-        // e.g., "c4", "C4", "d4", "D4", "e4", "f4", "F4", ...
         snprintf(note.name, sizeof(note.name), "%s%d", NOTE_NAMES[noteIndex], octave);
         
         _notes.push_back(note);
     }
+}
+
+void Quantizer::getPitchClass(const char* fullName, char* pitchClass) const {
+    // Extract the first character(s) before the octave digit
+    // For "c4" -> "c", for "C4" -> "C"
+    size_t len = strlen(fullName);
+    if (len >= 2) {
+        // The first character is the pitch class, the last is the octave
+        // But we also have "c4" with one char + one digit, or could have "C4"
+        pitchClass[0] = fullName[0];
+        pitchClass[1] = '\0';
+    } else {
+        pitchClass[0] = 'c';
+        pitchClass[1] = '\0';
+    }
+}
+
+void Quantizer::applyScale(const char** scaleNotes, uint8_t numScaleNotes) {
+    // Set all notes to inactive first
+    for (auto& note : _notes) {
+        note.inScale = false;
+    }
+    
+    // Activate notes that match the scale
+    for (auto& note : _notes) {
+        char pitchClass[2];
+        getPitchClass(note.name, pitchClass);
+        
+        for (uint8_t i = 0; i < numScaleNotes; i++) {
+            if (strcmp(pitchClass, scaleNotes[i]) == 0) {
+                note.inScale = true;
+                break;
+            }
+        }
+    }
+    
+    _scaleActive = true;
 }
 
 const Quantizer::Note& Quantizer::getNote(uint8_t index) const {

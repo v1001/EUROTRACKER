@@ -41,6 +41,16 @@ public:
     uint16_t getEndDAC() const { return _endDAC; }
     uint8_t getNumNotesInScale() const { return _numNotes; }
     
+    // ---- NEW: Scale management ----
+    // Apply a scale by setting inScale flags for notes matching the given pitch classes
+    // scaleNotes: array of note name strings (e.g., {"c","d","e","f","g","a","b"})
+    // numScaleNotes: number of notes in the scale
+    void applyScale(const char** scaleNotes, uint8_t numScaleNotes);
+    
+    // Enable/disable scale (if disabled, all notes are considered active)
+    void setScaleActive(bool active) { _scaleActive = active; }
+    bool isScaleActive() const { return _scaleActive; }
+    
     // Clear and rebuild
     void clearNotes();
     void addNote(const char* name, uint16_t dacValue);
@@ -52,6 +62,9 @@ private:
     uint16_t _endDAC;
     uint8_t _numNotes;
     bool _scaleActive;
+    
+    // Helper to extract pitch class from a note name (e.g., "c" from "c4")
+    void getPitchClass(const char* fullName, char* pitchClass) const;
 };
 
 #endif // QUANTIZER_H
