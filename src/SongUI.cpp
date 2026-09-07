@@ -36,13 +36,7 @@ void SongUI::draw() {
     // Header - track titles (show Q instead of T for quantized tracks)
     for (int i = 0; i < NUM_TRACKS; i++) {
         char label[4];
-        if (i < 4 && _songData.isQuantizerEnabled(i)) {
-            // Quantized track - show "Q1", "Q2", etc.
-            sprintf(label, "Q%d", i + 1);
-        } else {
-            // Normal track - show "T1", "T2", etc.
-            sprintf(label, "T%d", i + 1);
-        }
+        sprintf(label, "T%d", i + 1);
         _display.printAt(label, _trackXPositions[i] + 4, 0, ALIGN_LEFT);
     }
     _display.drawLine(0, 10, 128, 10, _display.colorWhite());

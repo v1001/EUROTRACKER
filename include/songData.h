@@ -2,6 +2,7 @@
 #define SONG_DATA_H
 
 #include "StepPattern.h"
+#include "StepSequencer.h"
 #include "Quantizer.h"
 #include <SPIFFS.h>
 
@@ -32,8 +33,8 @@ public:
     void clear();
     
     // File operations
-    bool load(const char* filename);
-    bool save(const char* filename);
+    bool load(const char* filename, StepSequencer** sequencers);
+    bool save(const char* filename, StepSequencer** sequencers);
     void deleteFile(const char* filename);
     bool exists(const char* filename);
     
@@ -70,24 +71,9 @@ public:
     int getStepLongestPatternIndex(int step) const;
 
     // Quantizer management
-    void setQuantizerEnabled(int track, bool enabled);
-    bool isQuantizerEnabled(int track) const;
     Quantizer& getQuantizer(int track);
     const Quantizer& getQuantizer(int track) const;
     void setQuantizer(int track, const Quantizer& quantizer);
-
-    // Sequencer reset management
-    void setResetOnStep(int track, bool enabled);
-    bool getResetOnStep(int track) const;
-
-    // CV range per track (0-4095) – for editing
-    void setMinCV(int track, uint16_t minCV);
-    void setMaxCV(int track, uint16_t maxCV);
-    uint16_t getMinCV(int track) const;
-    uint16_t getMaxCV(int track) const;
-    
-    void setSwingAmount(int track, uint8_t amount);
-    uint8_t getSwingAmount(int track) const;
    
 private:
     static const int NUM_MELODIC_TRACKS = 4;  // Tracks 0-3 have CV output
@@ -104,15 +90,7 @@ private:
     bool _hasCopiedData;
     
     // Quantizers for melodic tracks (0-3) only
-    bool _quantizerEnabled[4];
     Quantizer _quantizers[4];
-
-    bool _resetOnStep[NUM_TRACKS];
-    uint8_t _swingAmount[NUM_TRACKS];  // 0-100%
-
-    // CV range for melodic tracks (0-3) – used for editing only
-    uint16_t _minCV[NUM_MELODIC_TRACKS];
-    uint16_t _maxCV[NUM_MELODIC_TRACKS];
 };
 
 #endif

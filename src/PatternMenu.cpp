@@ -101,7 +101,7 @@ void PatternMenu::handleEditing() {
             break;
             
         case MENU_TRANSPOSE:
-            if (_track >= 4 || !_songData.isQuantizerEnabled(_track)) {
+            if (_track >= 4 || !_sequencer->isQuantizerEnabled()) {
                 _editValue = 0;
                 _tempTranspose = 0;
                 break;
@@ -139,7 +139,7 @@ void PatternMenu::applyChanges() {
     _songData.setDividerIndex(_track, _step, _tempDivider);
     _songData.getPattern(_track, _step).setNumSteps(_tempLength);
     
-    if (_track < 4 && _songData.isQuantizerEnabled(_track)) {
+    if (_track < 4 && _sequencer->isQuantizerEnabled()) {
         Quantizer& quantizer = _songData.getQuantizer(_track);
         uint8_t numNotes = quantizer.getNumNotes();
         if (numNotes > 0) {
