@@ -24,7 +24,6 @@ public:
 
     void onEnterUI();
     
-    uint8_t getCurrentStep() const { return _currentStep; }
     uint16_t getClockDivision() const { return _clockDivision; }
     bool getResetOnStep() const {return _resetOnStep; }
     uint8_t getSwingAmount() const {return _swingAmount; }
@@ -37,9 +36,6 @@ public:
     bool hasStepPending() const { return _stepPending; }
     
     void setClockDivision(uint16_t division);
-    void setDisplayMode(uint8_t mode) { _ui.setDisplayMode(mode); }
-    void setEditModeEncA(uint8_t mode) { _ui.setEditModeEncA(mode); }
-    void setEditModeEncB(uint8_t mode) { _ui.setEditModeEncB(mode); }
 
     // Quantizer settings
     void setQuantizerEnabled(bool enabled);
@@ -85,12 +81,6 @@ private:
     void renderToDisplay();
     uint64_t calculateDurationUs(uint8_t gatePercent);
     uint8_t constrainValue(int value);
-    
-    // These methods are now handled by UI, but kept for compatibility
-    void handleJoystick() {}
-    void handleEncoders() {}
-    void handleButtons() {}
-    void blinkCursor() {}
 
     // Quantizer
     bool _quantizerEnabled;
