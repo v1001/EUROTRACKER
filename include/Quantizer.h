@@ -54,6 +54,9 @@ public:
     // Clear and rebuild
     void clearNotes();
     void addNote(const char* name, uint16_t dacValue);
+
+    void setNoteDAC(uint8_t index, uint16_t dac);
+    void toggleNoteInScale(uint8_t index);
     
 private:
     static const char* NOTE_NAMES[12];

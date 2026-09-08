@@ -31,6 +31,11 @@ void SongData::init() {
     _length = DEFAULT_SONG_LENGTH;
     _hasCopiedData = false;
 
+    // Reset quantizers to default chromatic scale
+    for (int i = 0; i < 4; i++) {
+        _quantizers[i].generateChromatic(0, 4095, 61);
+    }
+
     for (int track = 0; track < NUM_TRACKS; track++) {
         for (int step = 0; step < MAX_SONG_LENGTH; step++) {
             _patterns[track][step].init(PATTERN_STEPS);
@@ -226,13 +231,6 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
                 file.close();
                 return false;
             }
-            // Rebuild quantizer with stored range
-            _quantizers[track].generateChromatic(startDAC, endDAC, numNotes);
-        }
-    } else {
-        // Version 2: set defaults and rebuild
-        for (int track = 0; track < 4; track++) {
-            _quantizers[track].generateChromatic(0, 4095, 61);
         }
     }
 

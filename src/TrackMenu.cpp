@@ -1,13 +1,21 @@
 #include "TrackMenu.h"
+#include "QuantizerMainMenu.h"
+#include "GenerateMenu.h"
+#include "NotesMenu.h"
 
 TrackMenu::TrackMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer)
     : _display(display), _userInput(userInput), _songSequencer(songSequencer),
       _track(0), _selectedIndex(0), _editValue(0), _exitRequested(false),
-      _numItems(0), _lastNavTime(0), _lastJoystickMoveTime(0),
+      _numItems(0), _subState(SUB_NONE),
+      _quantizerMenu(nullptr), _generateMenu(nullptr), _notesMenu(nullptr),
+      _lastNavTime(0), _lastJoystickMoveTime(0),
       _joystickWasCentered(true), _lastEncPosA(0), _lastEncPosB(0) {
 }
 
 TrackMenu::~TrackMenu() {
+    delete _quantizerMenu;
+    delete _generateMenu;
+    delete _notesMenu;
 }
 
 void TrackMenu::enter(int track) {
@@ -21,20 +29,20 @@ void TrackMenu::enter(int track) {
     _lastEncPosB = _userInput.encoder_b.position;
     buildItemList();
     loadCurrentValue();
+    // Ensure submenu is cleared (in case we re-enter)
+    exitSubMenu();
 }
 
 void TrackMenu::buildItemList() {
     _numItems = 0;
     if (_track < 4) {
-        // Melodic tracks: all items
-        _itemIndices[_numItems++] = MENU_QUANTIZER_ENABLE;
+        _itemIndices[_numItems++] = MENU_QUANTIZER_SETTINGS;
         _itemIndices[_numItems++] = MENU_CV_RANGE_LOW;
         _itemIndices[_numItems++] = MENU_CV_RANGE_HIGH;
         _itemIndices[_numItems++] = MENU_SWING;
         _itemIndices[_numItems++] = MENU_RESET_ON_STEP;
         _itemIndices[_numItems++] = MENU_EXIT;
     } else {
-        // Gate tracks: only Swing and Exit (Reset Step does not apply)
         _itemIndices[_numItems++] = MENU_SWING;
         _itemIndices[_numItems++] = MENU_EXIT;
     }
@@ -45,8 +53,8 @@ void TrackMenu::loadCurrentValue() {
     StepSequencer* seq = _songSequencer.getSequencer(_track);
 
     switch (item) {
-        case MENU_QUANTIZER_ENABLE:
-            _editValue = (_track < 4 && seq->isQuantizerEnabled()) ? 1 : 0;
+        case MENU_QUANTIZER_SETTINGS:
+            _editValue = 0;
             break;
         case MENU_CV_RANGE_LOW:
             _editValue = seq->getMinCV();
@@ -67,8 +75,82 @@ void TrackMenu::loadCurrentValue() {
 }
 
 void TrackMenu::update() {
+    if (_subState != SUB_NONE) {
+        handleSubMenuUpdate();
+        return;
+    }
     handleNavigation();
     handleEditing();
+}
+
+void TrackMenu::draw() {
+    if (_subState != SUB_NONE) {
+        drawSubMenu();
+        return;
+    }
+    // Main Track Menu drawing
+    _display.setTextSize(TEXT_SMALL);
+    _display.setTextColor(_display.colorWhite());
+    StepSequencer* seq = _songSequencer.getSequencer(_track);
+
+    char valueBuffer[16];
+    for (int i = 0; i < _numItems; i++) {
+        MenuItem item = _itemIndices[i];
+        int y = i * 10;
+        const char* itemName = "";
+        const char* value = "";
+
+        switch (item) {
+            case MENU_QUANTIZER_SETTINGS: itemName = "Quantizer"; break;
+            case MENU_CV_RANGE_LOW:    itemName = "CV Low";    break;
+            case MENU_CV_RANGE_HIGH:   itemName = "CV High";   break;
+            case MENU_SWING:           itemName = "Swing";     break;
+            case MENU_RESET_ON_STEP:   itemName = "Reset Step"; break;
+            case MENU_EXIT:            itemName = "Exit";      break;
+        }
+
+        bool selected = (i == _selectedIndex);
+
+        if (selected) {
+            if (item != MENU_EXIT && item != MENU_QUANTIZER_SETTINGS) {
+                switch (item) {
+                    case MENU_CV_RANGE_LOW:     sprintf(valueBuffer, "%d", _editValue); value = valueBuffer; break;
+                    case MENU_CV_RANGE_HIGH:    sprintf(valueBuffer, "%d", _editValue); value = valueBuffer; break;
+                    case MENU_SWING:            sprintf(valueBuffer, "%d%%", _editValue); value = valueBuffer; break;
+                    case MENU_RESET_ON_STEP:    value = _editValue ? "RESET" : "KEEP"; break;
+                    default: break;
+                }
+            } else if (item == MENU_QUANTIZER_SETTINGS) {
+                value = ">";
+            }
+        } else {
+            if (item != MENU_EXIT) {
+                switch (item) {
+                    case MENU_QUANTIZER_SETTINGS: value = ">"; break;
+                    case MENU_CV_RANGE_LOW:     sprintf(valueBuffer, "%d", seq->getMinCV()); value = valueBuffer; break;
+                    case MENU_CV_RANGE_HIGH:    sprintf(valueBuffer, "%d", seq->getMaxCV()); value = valueBuffer; break;
+                    case MENU_SWING:            sprintf(valueBuffer, "%d%%", seq->getSwingAmount()); value = valueBuffer; break;
+                    case MENU_RESET_ON_STEP:    value = seq->getResetOnStep() ? "RESET" : "KEEP"; break;
+                    default: break;
+                }
+            }
+        }
+
+        if (selected) {
+            _display.fillRect(0, y - 2, 128, 10, _display.colorWhite());
+            _display.setTextColor(_display.colorBlack());
+            _display.printAt(itemName, 2, y, ALIGN_LEFT);
+            if (strlen(value) > 0) {
+                _display.printAt(value, 96, y, ALIGN_LEFT);
+            }
+            _display.setTextColor(_display.colorWhite());
+        } else {
+            _display.printAt(itemName, 2, y, ALIGN_LEFT);
+            if (strlen(value) > 0) {
+                _display.printAt(value, 96, y, ALIGN_LEFT);
+            }
+        }
+    }
 }
 
 void TrackMenu::handleNavigation() {
@@ -110,7 +192,7 @@ void TrackMenu::handleEditing() {
 
         MenuItem item = _itemIndices[_selectedIndex];
 
-        if (item != MENU_EXIT) {
+        if (item != MENU_EXIT && item != MENU_QUANTIZER_SETTINGS) {
             switch (item) {
                 case MENU_CV_RANGE_LOW:
                     if (encAChanged) _editValue += deltaA * 50;
@@ -125,13 +207,6 @@ void TrackMenu::handleEditing() {
                     if (_editValue > 4095) _editValue = 4095;
                     if (_editValue < seq->getMinCV() + 100) _editValue = seq->getMinCV() + 100;
                     applySetting();
-                    break;
-                case MENU_QUANTIZER_ENABLE:
-                    if (encAChanged) {
-                        _editValue = (_editValue + deltaA) % 2;
-                        if (_editValue < 0) _editValue = 1;
-                        applySetting();
-                    }
                     break;
                 case MENU_SWING:
                     if (encAChanged) _editValue += deltaA * 10;
@@ -161,12 +236,18 @@ void TrackMenu::handleEditing() {
         if (item == MENU_EXIT) {
             applySetting();
             _exitRequested = true;
+        } else if (item == MENU_QUANTIZER_SETTINGS && _track < 4) {
+            enterSubMenu(SUB_QUANTIZER_MAIN);
         }
     }
 
     if (_userInput.save_button.just_released) {
-        applySetting();
-        _exitRequested = true;
+        if (_subState != SUB_NONE) {
+            // handled in submenu update
+        } else {
+            applySetting();
+            _exitRequested = true;
+        }
     }
 }
 
@@ -175,13 +256,8 @@ void TrackMenu::applySetting() {
     StepSequencer* seq = _songSequencer.getSequencer(_track);
 
     switch (item) {
-        case MENU_QUANTIZER_ENABLE: {
-            if (_track < 4) {
-                bool enabled = (_editValue == 1);
-                if (seq) seq->setQuantizerEnabled(enabled);
-            }
+        case MENU_QUANTIZER_SETTINGS:
             break;
-        }
         case MENU_CV_RANGE_LOW: {
             if (_track < 4 && seq) seq->setMinCV(_editValue);
             break;
@@ -204,67 +280,92 @@ void TrackMenu::applySetting() {
     }
 }
 
-void TrackMenu::draw() {
-    _display.setTextSize(TEXT_SMALL);
-    _display.setTextColor(_display.colorWhite());
-    StepSequencer* seq = _songSequencer.getSequencer(_track);
+void TrackMenu::enterSubMenu(SubMenuState state) {
+    _subState = state;
+    switch (state) {
+        case SUB_QUANTIZER_MAIN:
+            _quantizerMenu = new QuantizerMainMenu(_display, _userInput, _songSequencer, _track);
+            _quantizerMenu->enter();
+            break;
+        case SUB_GENERATE:
+            _generateMenu = new GenerateMenu(_display, _userInput, _songSequencer, _track);
+            _generateMenu->enter();
+            break;
+        case SUB_NOTES:
+            _notesMenu = new NotesMenu(_display, _userInput, _songSequencer, _track);
+            _notesMenu->enter();
+            break;
+        default:
+            break;
+    }
+}
 
-    char valueBuffer[16];
-    for (int i = 0; i < _numItems; i++) {
-        MenuItem item = _itemIndices[i];
-        int y = i * 10;
-        const char* itemName = "";
-        const char* value = "";
+void TrackMenu::exitSubMenu() {
+    delete _quantizerMenu;
+    _quantizerMenu = nullptr;
+    delete _generateMenu;
+    _generateMenu = nullptr;
+    delete _notesMenu;
+    _notesMenu = nullptr;
+    _subState = SUB_NONE;
+}
 
-        switch (item) {
-            case MENU_QUANTIZER_ENABLE: itemName = "Quantizer"; break;
-            case MENU_CV_RANGE_LOW:    itemName = "CV Low";    break;
-            case MENU_CV_RANGE_HIGH:   itemName = "CV High";   break;
-            case MENU_SWING:           itemName = "Swing";     break;
-            case MENU_RESET_ON_STEP:   itemName = "Reset Step"; break;
-            case MENU_EXIT:            itemName = "Exit";      break;
-        }
+void TrackMenu::handleSubMenuUpdate() {
+    bool shouldExit = false;
+    bool shouldOpenGenerate = false;
+    bool shouldOpenNotes = false;
 
-        bool selected = (i == _selectedIndex);
-
-        if (selected) {
-            if (item != MENU_EXIT) {
-                switch (item) {
-                    case MENU_QUANTIZER_ENABLE: value = _editValue ? "ON" : "OFF"; break;
-                    case MENU_CV_RANGE_LOW:     sprintf(valueBuffer, "%d", _editValue); value = valueBuffer; break;
-                    case MENU_CV_RANGE_HIGH:    sprintf(valueBuffer, "%d", _editValue); value = valueBuffer; break;
-                    case MENU_SWING:            sprintf(valueBuffer, "%d%%", _editValue); value = valueBuffer; break;
-                    case MENU_RESET_ON_STEP:    value = _editValue ? "RESET" : "KEEP"; break;
-                    default: break;
+    switch (_subState) {
+        case SUB_QUANTIZER_MAIN:
+            _quantizerMenu->update();
+            if (_quantizerMenu->shouldExit()) {
+                _quantizerMenu->clearExitFlag();
+                if (_quantizerMenu->shouldOpenGenerate()) {
+                    _quantizerMenu->clearOpenGenerateFlag();
+                    shouldOpenGenerate = true;
+                } else if (_quantizerMenu->shouldOpenNotes()) {
+                    _quantizerMenu->clearOpenNotesFlag();
+                    shouldOpenNotes = true;
+                } else {
+                    shouldExit = true;
                 }
             }
-        } else {
-            if (item != MENU_EXIT) {
-                switch (item) {
-                    case MENU_QUANTIZER_ENABLE: value = (_track < 4 && seq->isQuantizerEnabled()) ? "ON" : "OFF"; break;
-                    case MENU_CV_RANGE_LOW:     sprintf(valueBuffer, "%d", seq->getMinCV()); value = valueBuffer; break;
-                    case MENU_CV_RANGE_HIGH:    sprintf(valueBuffer, "%d", seq->getMaxCV()); value = valueBuffer; break;
-                    case MENU_SWING:            sprintf(valueBuffer, "%d%%", seq->getSwingAmount()); value = valueBuffer; break;
-                    case MENU_RESET_ON_STEP:    value = seq->getResetOnStep() ? "RESET" : "KEEP"; break;
-                    default: break;
-                }
+            break;
+        case SUB_GENERATE:
+            _generateMenu->update();
+            if (_generateMenu->shouldExit()) {
+                _generateMenu->clearExitFlag();
+                shouldExit = true;
             }
-        }
+            break;
+        case SUB_NOTES:
+            _notesMenu->update();
+            if (_notesMenu->shouldExit()) {
+                _notesMenu->clearExitFlag();
+                shouldExit = true;
+            }
+            break;
+        default:
+            break;
+    }
 
-        if (selected) {
-            _display.fillRect(0, y - 2, 128, 10, _display.colorWhite());
-            _display.setTextColor(_display.colorBlack());
-            _display.printAt(itemName, 2, y, ALIGN_LEFT);
-            if (strlen(value) > 0) {
-                _display.printAt(value, 96, y, ALIGN_LEFT);
-            }
-            _display.setTextColor(_display.colorWhite());
-        } else {
-            _display.printAt(itemName, 2, y, ALIGN_LEFT);
-            if (strlen(value) > 0) {
-                _display.printAt(value, 96, y, ALIGN_LEFT);
-            }
-        }
+    if (shouldOpenGenerate) {
+        exitSubMenu();
+        enterSubMenu(SUB_GENERATE);
+    } else if (shouldOpenNotes) {
+        exitSubMenu();
+        enterSubMenu(SUB_NOTES);
+    } else if (shouldExit) {
+        exitSubMenu();
+    }
+}
+
+void TrackMenu::drawSubMenu() {
+    switch (_subState) {
+        case SUB_QUANTIZER_MAIN: _quantizerMenu->draw(); break;
+        case SUB_GENERATE:      _generateMenu->draw(); break;
+        case SUB_NOTES:         _notesMenu->draw(); break;
+        default: break;
     }
 }
 

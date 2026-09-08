@@ -4,6 +4,9 @@
 #include "DisplayManager.h"
 #include "UserInput.h"
 #include "SongSequencer.h"
+#include "QuantizerMainMenu.h"
+#include "GenerateMenu.h"
+#include "NotesMenu.h"
 
 class TrackMenu {
 public:
@@ -20,7 +23,7 @@ public:
 
 private:
     enum MenuItem {
-        MENU_QUANTIZER_ENABLE,
+        MENU_QUANTIZER_SETTINGS,
         MENU_CV_RANGE_LOW,
         MENU_CV_RANGE_HIGH,
         MENU_SWING,
@@ -28,20 +31,31 @@ private:
         MENU_EXIT
     };
 
+    enum SubMenuState {
+        SUB_NONE,
+        SUB_QUANTIZER_MAIN,
+        SUB_GENERATE,
+        SUB_NOTES
+        // SUB_SCALE added later
+    };
+
     DisplayManager& _display;
     UserInput& _userInput;
     SongSequencer& _songSequencer;
 
     int _track;
-    int _selectedIndex;          // index into _itemIndices
+    int _selectedIndex;
     int _editValue;
     bool _exitRequested;
 
-    // Dynamic item list
     int _numItems;
-    MenuItem _itemIndices[6];    // max 6 items
+    MenuItem _itemIndices[6];
 
-    // Navigation timing
+    SubMenuState _subState;
+    QuantizerMainMenu* _quantizerMenu;
+    GenerateMenu* _generateMenu;
+    NotesMenu* _notesMenu;
+
     unsigned long _lastNavTime;
     unsigned long _lastJoystickMoveTime;
     bool _joystickWasCentered;
@@ -53,6 +67,11 @@ private:
     void applySetting();
     void loadCurrentValue();
     void buildItemList();
+
+    void enterSubMenu(SubMenuState state);
+    void exitSubMenu();
+    void handleSubMenuUpdate();
+    void drawSubMenu();
 };
 
 #endif

@@ -165,3 +165,15 @@ void Quantizer::addNote(const char* name, uint16_t dacValue) {
     note.inScale = true;
     _notes.push_back(note);
 }
+
+void Quantizer::setNoteDAC(uint8_t index, uint16_t dac) {
+    if (index < _notes.size()) {
+        _notes[index].dacValue = dac;
+    }
+}
+
+void Quantizer::toggleNoteInScale(uint8_t index) {
+    if (index < _notes.size()) {
+        _notes[index].inScale = !_notes[index].inScale;
+    }
+}

@@ -212,9 +212,10 @@ void MainMenu::handleEditing() {
         if (_selectedIndex == MENU_NEW_SONG) {
             _pendingNewSong = true;
             _showWarning = true;
-        } else if (_selectedIndex == MENU_SAVE_SONG) {
+        }else if (_selectedIndex == MENU_SAVE_SONG) {
             _pendingIsSave = true;
             _pendingSlot = _saveSlot;
+            _pendingNewSong = false;   // clear any stale new song flag
             
             char filename[32];
             sprintf(filename, "/song%d.song", _pendingSlot + 1);
@@ -225,6 +226,11 @@ void MainMenu::handleEditing() {
                 _trackerApp->saveCurrentProjectToSlot(_pendingSlot + 1);
                 _exitRequested = true;
             }
+        } else if (_selectedIndex == MENU_LOAD_SONG) {
+            _pendingIsSave = false;
+            _pendingSlot = _loadSlot;
+            _pendingNewSong = false;   // clear any stale new song flag
+            _showWarning = true;
         } else if (_selectedIndex == MENU_LOAD_SONG) {
             _pendingIsSave = false;
             _pendingSlot = _loadSlot;
@@ -252,18 +258,30 @@ void MainMenu::handleWarning() {
         }
         _showWarning = false;
         _exitRequested = true;
+        // Clear all pending flags
+        _pendingNewSong = false;
+        _pendingIsSave = false;
+        _pendingSlot = 0;
         return;
     }
     
     // Check for encoder B button press (NO)
     if (_userInput.encoder_b_button.just_released) {
         _showWarning = false;
+        // Clear all pending flags when dismissing
+        _pendingNewSong = false;
+        _pendingIsSave = false;
+        _pendingSlot = 0;
         return;
     }
     
     // Save button also cancels
     if (_userInput.save_button.just_released) {
         _showWarning = false;
+        // Clear all pending flags when dismissing
+        _pendingNewSong = false;
+        _pendingIsSave = false;
+        _pendingSlot = 0;
         return;
     }
 }
