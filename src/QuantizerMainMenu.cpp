@@ -1,8 +1,9 @@
 #include "QuantizerMainMenu.h"
+#include "Scales.h"
 
 QuantizerMainMenu::QuantizerMainMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer, int track)
-    : _display(display), _userInput(userInput), _songSequencer(songSequencer), _track(track),
-      _selectedIndex(0), _editValue(0), _exitRequested(false), _openGenerate(false), _openNotes(false) {
+    : _display(display), _userInput(userInput), _songSequencer(songSequencer), _track(track), _selectedIndex(0),
+    _editValue(0), _exitRequested(false), _openGenerate(false), _openNotes(false), _openScale(false) {
 }
 
 QuantizerMainMenu::~QuantizerMainMenu() {
@@ -13,6 +14,7 @@ void QuantizerMainMenu::enter() {
     _exitRequested = false;
     _openGenerate = false;
     _openNotes = false;
+    _openScale = false;
     loadCurrentValue();
 }
 
@@ -69,6 +71,10 @@ void QuantizerMainMenu::handleEditing() {
                 _openNotes = true;
                 _exitRequested = true;
                 break;
+            case ITEM_SCALE:
+                _openScale = true;
+                _exitRequested = true;
+                break;
             case ITEM_EXIT:
                 _exitRequested = true;
                 break;
@@ -93,21 +99,33 @@ void QuantizerMainMenu::draw() {
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
 
-    const char* items[] = {"Enable", "Generate", "Notes", "Exit"};
-    char valueBuffer[8];
+    // Build the composed label for the Scale item
+    static const char* NOTE_NAMES[12] = {"c","C","d","D","e","f","F","g","G","a","A","b"};
+    Quantizer& q = _songSequencer.getSongData().getQuantizer(_track);
+    const ScalePattern* pat = getScalePattern(q.getScaleIndex());
+    const char* scaleName = pat ? pat->name : "?";
+    const char* rootName  = NOTE_NAMES[q.getRootIndex()];
+
+    char scaleLabel[24];
+    // "Scale: c Pentatonic Maj" would overflow; keep total ≤ 21 chars
+    // Reserve 8 chars for "Scale: " + root + space = 8 chars, leaving ~13 for the scale name
+    snprintf(scaleLabel, sizeof(scaleLabel), "Scale: %s %.12s", rootName, scaleName);
+
+    const char* items[5];
+    items[ITEM_ENABLE]   = "Enable";
+    items[ITEM_GENERATE] = "Generate";
+    items[ITEM_SCALE]    = scaleLabel;
+    items[ITEM_NOTES]    = "Notes";
+    items[ITEM_EXIT]     = "Exit";
 
     for (int i = 0; i <= ITEM_EXIT; i++) {
         int y = i * 10;
         const char* value = "";
 
-        if (i == _selectedIndex) {
-            // Show edit buffer for Enable
-            if (i == ITEM_ENABLE) {
+        if (i == ITEM_ENABLE) {
+            if (i == _selectedIndex) {
                 value = _editValue ? "ON" : "OFF";
-            }
-        } else {
-            // Show saved value for Enable
-            if (i == ITEM_ENABLE) {
+            } else {
                 StepSequencer* seq = _songSequencer.getSequencer(_track);
                 value = seq->isQuantizerEnabled() ? "ON" : "OFF";
             }

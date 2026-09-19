@@ -24,13 +24,19 @@ public:
     bool shouldOpenNotes() const { return _openNotes; }
     void clearOpenNotesFlag() { _openNotes = false; }
 
+    bool shouldOpenScale() const { return _openScale; }
+    void clearOpenScaleFlag() { _openScale = false; }
+
 private:
     enum MenuItem {
         ITEM_ENABLE,
         ITEM_GENERATE,
+        ITEM_SCALE,
         ITEM_NOTES,
         ITEM_EXIT
     };
+
+
 
     DisplayManager& _display;
     UserInput& _userInput;
@@ -42,6 +48,7 @@ private:
     bool _exitRequested;
     bool _openGenerate;
     bool _openNotes;
+    bool _openScale;
 
     void handleNavigation();
     void handleEditing();

@@ -7,6 +7,7 @@
 #include "QuantizerMainMenu.h"
 #include "GenerateMenu.h"
 #include "NotesMenu.h"
+#include "ScaleMenu.h"
 
 class TrackMenu {
 public:
@@ -35,8 +36,8 @@ private:
         SUB_NONE,
         SUB_QUANTIZER_MAIN,
         SUB_GENERATE,
+        SUB_SCALE,
         SUB_NOTES
-        // SUB_SCALE added later
     };
 
     DisplayManager& _display;
@@ -55,6 +56,7 @@ private:
     QuantizerMainMenu* _quantizerMenu;
     GenerateMenu* _generateMenu;
     NotesMenu* _notesMenu;
+    ScaleMenu* _scaleMenu;
 
     unsigned long _lastNavTime;
     unsigned long _lastJoystickMoveTime;

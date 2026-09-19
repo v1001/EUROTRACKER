@@ -185,6 +185,11 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
                 return false;
             }
             _quantizers[track].addNote(name, dac);
+            if (version >= 5) {
+                uint8_t inScale;
+                if (file.read(&inScale, 1) != 1) { file.close(); return false; }
+                _quantizers[track].setNoteInScale(i, inScale != 0);
+            }
         }
     }
 
@@ -234,6 +239,35 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
         }
     }
 
+    // ---- Quantizer scale index and root note (version 4) ----
+    if (version >= 4) {
+        for (int track = 0; track < 4; track++) {
+            uint8_t scaleIdx, rootIdx;
+            if (file.read(&scaleIdx, 1) != 1 ||
+                file.read(&rootIdx, 1) != 1) {
+                file.close();
+                return false;
+            }
+            _quantizers[track].setScaleIndex(scaleIdx);
+            _quantizers[track].setRootIndex(rootIdx);
+
+            // v4 stored notes without inScale — reconstruct it from the scale
+            if (version == 4) {
+                const ScalePattern* pat = getScalePattern(scaleIdx);
+                if (pat) {
+                    _quantizers[track].applyScaleIntervals(pat->intervals, pat->numNotes, rootIdx);
+                }
+            }
+        }
+    } else {
+        // v3 and earlier: no scale metadata; leave defaults (Chromatic, c)
+        for (int track = 0; track < 4; track++) {
+            _quantizers[track].setScaleIndex(0);
+            _quantizers[track].setRootIndex(0);
+            // inScale is already true for all notes (addNote default)
+        }
+    }
+
     file.close();
     return true;
 }
@@ -247,12 +281,13 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     needed += _length * NUM_TRACKS * PATTERN_STEPS * (2 + 1 + 1 + 1 + 1 + 1 + 1 + 1); // cv + flags + 6 others = 9
     needed += _length * NUM_TRACKS;           // pattern lengths
     for (int track = 0; track < 4; track++) {
-        needed += 1 + 1 + _quantizers[track].getNumNotes() * (4 + 2); // enabled + numNotes + notes (4-byte name + 2-byte DAC)
+        needed += 1 + 1 + _quantizers[track].getNumNotes() * (4 + 2 + 1); // enabled + numNotes + notes (4-byte name + 2-byte DAC + 1-byte inScale)
     }
     needed += 4 * 4;                          // CV ranges (min/max)
     needed += NUM_TRACKS;                     // reset flags
     needed += NUM_TRACKS;                     // swing amounts
-    needed += 4 * (2 + 2 + 1);                // NEW: quantizer range parameters per track
+    needed += 4 * (2 + 2 + 1);                // quantizer range parameters per track
+    needed += 4 * 2;                          // scale index + root index per track
 
     size_t total = SPIFFS.totalBytes();
     size_t used = SPIFFS.usedBytes();
@@ -362,15 +397,11 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     // ---- Quantizers (enabled + notes) ----
     for (int track = 0; track < 4; track++) {
         uint8_t enabled = sequencers[track]->isQuantizerEnabled() ? 1 : 0;
-        if (file.write(&enabled, 1) != 1) {
-            file.close();
-            return false;
-        }
+        if (file.write(&enabled, 1) != 1) { file.close(); return false; }
+
         uint8_t numNotes = _quantizers[track].getNumNotes();
-        if (file.write(&numNotes, 1) != 1) {
-            file.close();
-            return false;
-        }
+        if (file.write(&numNotes, 1) != 1) { file.close(); return false; }
+
         for (uint8_t i = 0; i < numNotes; i++) {
             const char* name = _quantizers[track].getNoteName(i);
             if (file.write((const uint8_t*)name, 4) != 4) {
@@ -379,6 +410,12 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
             }
             uint16_t dac = _quantizers[track].getNoteDAC(i);
             if (file.write((uint8_t*)&dac, 2) != 2) {
+                file.close();
+                return false;
+            }
+            // inScale, version 5
+            uint8_t inScale = _quantizers[track].getNote(i).inScale ? 1 : 0;
+            if (file.write(&inScale, 1) != 1) {
                 file.close();
                 return false;
             }
@@ -416,12 +453,23 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
 
     // ---- NEW: Quantizer range parameters (startDAC, endDAC, numNotes) ----
     for (int track = 0; track < 4; track++) {
-        uint8_t startDAC = _quantizers[track].getStartDAC();
-        uint8_t endDAC = _quantizers[track].getEndDAC();
+        uint16_t startDAC = _quantizers[track].getStartDAC();
+        uint16_t endDAC = _quantizers[track].getEndDAC();
         uint8_t numNotes = _quantizers[track].getNumNotes();
         if (file.write((uint8_t*)&startDAC, 2) != 2 ||
             file.write((uint8_t*)&endDAC, 2) != 2 ||
             file.write((uint8_t*)&numNotes, 1) != 1) {
+            file.close();
+            return false;
+        }
+    }
+
+    // ---- Quantizer scale index and root note (version 4) ----
+    for (int track = 0; track < 4; track++) {
+        uint8_t scaleIdx = _quantizers[track].getScaleIndex();
+        uint8_t rootIdx  = _quantizers[track].getRootIndex();
+        if (file.write(&scaleIdx, 1) != 1 ||
+            file.write(&rootIdx, 1) != 1) {
             file.close();
             return false;
         }

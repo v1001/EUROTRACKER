@@ -6,7 +6,7 @@
 TrackMenu::TrackMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer)
     : _display(display), _userInput(userInput), _songSequencer(songSequencer),
       _track(0), _selectedIndex(0), _editValue(0), _exitRequested(false),
-      _numItems(0), _subState(SUB_NONE),
+      _numItems(0), _subState(SUB_NONE), _scaleMenu(nullptr),
       _quantizerMenu(nullptr), _generateMenu(nullptr), _notesMenu(nullptr),
       _lastNavTime(0), _lastJoystickMoveTime(0),
       _joystickWasCentered(true), _lastEncPosA(0), _lastEncPosB(0) {
@@ -16,6 +16,7 @@ TrackMenu::~TrackMenu() {
     delete _quantizerMenu;
     delete _generateMenu;
     delete _notesMenu;
+    delete _scaleMenu;
 }
 
 void TrackMenu::enter(int track) {
@@ -295,6 +296,10 @@ void TrackMenu::enterSubMenu(SubMenuState state) {
             _notesMenu = new NotesMenu(_display, _userInput, _songSequencer, _track);
             _notesMenu->enter();
             break;
+        case SUB_SCALE:
+            _scaleMenu = new ScaleMenu(_display, _userInput, _songSequencer, _track);
+            _scaleMenu->enter();
+            break;
         default:
             break;
     }
@@ -308,12 +313,15 @@ void TrackMenu::exitSubMenu() {
     delete _notesMenu;
     _notesMenu = nullptr;
     _subState = SUB_NONE;
+    delete _scaleMenu;
+    _scaleMenu = nullptr;
 }
 
 void TrackMenu::handleSubMenuUpdate() {
     bool shouldExit = false;
     bool shouldOpenGenerate = false;
     bool shouldOpenNotes = false;
+    bool shouldOpenScale = false;
 
     switch (_subState) {
         case SUB_QUANTIZER_MAIN:
@@ -326,6 +334,9 @@ void TrackMenu::handleSubMenuUpdate() {
                 } else if (_quantizerMenu->shouldOpenNotes()) {
                     _quantizerMenu->clearOpenNotesFlag();
                     shouldOpenNotes = true;
+                } else if (_quantizerMenu->shouldOpenScale()) {
+                    _quantizerMenu->clearOpenScaleFlag();
+                    shouldOpenScale = true;
                 } else {
                     shouldExit = true;
                 }
@@ -345,6 +356,13 @@ void TrackMenu::handleSubMenuUpdate() {
                 shouldExit = true;
             }
             break;
+        case SUB_SCALE:
+            _scaleMenu->update();
+            if (_scaleMenu->shouldExit()) {
+                _scaleMenu->clearExitFlag();
+                shouldExit = true;
+            }
+            break;
         default:
             break;
     }
@@ -352,6 +370,9 @@ void TrackMenu::handleSubMenuUpdate() {
     if (shouldOpenGenerate) {
         exitSubMenu();
         enterSubMenu(SUB_GENERATE);
+    } else if (shouldOpenScale) {
+        exitSubMenu();
+        enterSubMenu(SUB_SCALE);
     } else if (shouldOpenNotes) {
         exitSubMenu();
         enterSubMenu(SUB_NOTES);
@@ -363,8 +384,9 @@ void TrackMenu::handleSubMenuUpdate() {
 void TrackMenu::drawSubMenu() {
     switch (_subState) {
         case SUB_QUANTIZER_MAIN: _quantizerMenu->draw(); break;
-        case SUB_GENERATE:      _generateMenu->draw(); break;
-        case SUB_NOTES:         _notesMenu->draw(); break;
+        case SUB_SCALE:          _scaleMenu->draw();     break;
+        case SUB_GENERATE:       _generateMenu->draw();  break;
+        case SUB_NOTES:          _notesMenu->draw();     break;
         default: break;
     }
 }

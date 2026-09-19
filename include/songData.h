@@ -5,12 +5,13 @@
 #include "StepSequencer.h"
 #include "Quantizer.h"
 #include <SPIFFS.h>
+#include "Scales.h"
 
 class SongData {
 public:
     // Constants for file format
     static const uint32_t FILE_MAGIC = 0x534F4E47;   // "SONG"
-    static const uint8_t  FILE_VERSION = 3;          // bumped to 3
+    static const uint8_t  FILE_VERSION = 5;   // with inScale
     static const uint8_t  OLD_FILE_VERSION = 0;
 
     // Constants

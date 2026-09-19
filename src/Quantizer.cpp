@@ -5,7 +5,7 @@
 const char* Quantizer::NOTE_NAMES[12] = {"c", "C", "d", "D", "e", "f", "F", "g", "G", "a", "A", "b"};
 
 Quantizer::Quantizer() 
-    : _startDAC(0), _endDAC(4095), _numNotes(61), _scaleActive(true) {
+    : _startDAC(0), _endDAC(4095), _numNotes(61), _scaleActive(true), _scaleIndex(0), _rootIndex(0) {
     generateChromatic(0, 4095, 61);
 }
 
@@ -32,6 +32,14 @@ void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t nu
         
         _notes.push_back(note);
     }
+    // Reset to Chromatic scale with root c
+    _scaleIndex = 0;
+    _rootIndex = 0;
+    // All notes active (chromatic)
+    for (auto& note : _notes) {
+        note.inScale = true;
+    }
+    _scaleActive = true;
 }
 
 void Quantizer::getPitchClass(const char* fullName, char* pitchClass) const {
@@ -174,5 +182,11 @@ void Quantizer::setNoteDAC(uint8_t index, uint16_t dac) {
 void Quantizer::toggleNoteInScale(uint8_t index) {
     if (index < _notes.size()) {
         _notes[index].inScale = !_notes[index].inScale;
+    }
+}
+
+void Quantizer::setNoteInScale(uint8_t index, bool inScale) {
+    if (index < _notes.size()) {
+        _notes[index].inScale = inScale;
     }
 }

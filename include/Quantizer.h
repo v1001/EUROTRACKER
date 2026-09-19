@@ -47,6 +47,7 @@ public:
     void setScaleIndex(uint8_t idx) { _scaleIndex = idx; }
     uint8_t getRootIndex() const { return _rootIndex; }
     void setRootIndex(uint8_t idx) { _rootIndex = idx; }
+    void setNoteInScale(uint8_t index, bool inScale);
     
     // Enable/disable scale (if disabled, all notes are considered active)
     void setScaleActive(bool active) { _scaleActive = active; }
