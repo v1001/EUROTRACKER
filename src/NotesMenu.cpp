@@ -75,11 +75,24 @@ void NotesMenu::handleEditing() {
             int newVal = current;
             if (encAChanged) newVal += deltaA * 50;  // coarse
             if (encBChanged) newVal += deltaB;       // fine
-            if (newVal < 0) newVal = 0;
-            if (newVal > 4095) newVal = 4095;
+
+            // Determine bounds from adjacent notes
+            int minVal = 0;
+            int maxVal = 4095;
+
+            if (_selectedIndex > 0) {
+                minVal = quantizer.getNoteDAC(_selectedIndex - 1);
+            }
+            if (_selectedIndex < quantizer.getNumNotes() - 1) {
+                maxVal = quantizer.getNoteDAC(_selectedIndex + 1);
+            }
+
+            // Clamp to bounds
+            if (newVal < minVal) newVal = minVal;
+            if (newVal > maxVal) newVal = maxVal;
+
             if ((uint16_t)newVal != current) {
                 quantizer.setNoteDAC(_selectedIndex, (uint16_t)newVal);
-                // Display will update on next draw
             }
         }
         lastEncPosA = encPosA;

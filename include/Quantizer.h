@@ -42,10 +42,11 @@ public:
     uint8_t getNumNotesInScale() const { return _numNotes; }
     
     // ---- NEW: Scale management ----
-    // Apply a scale by setting inScale flags for notes matching the given pitch classes
-    // scaleNotes: array of note name strings (e.g., {"c","d","e","f","g","a","b"})
-    // numScaleNotes: number of notes in the scale
-    void applyScale(const char** scaleNotes, uint8_t numScaleNotes);
+    void applyScaleIntervals(const uint8_t* intervals, uint8_t numIntervals, uint8_t rootIndex);
+    uint8_t getScaleIndex() const { return _scaleIndex; }
+    void setScaleIndex(uint8_t idx) { _scaleIndex = idx; }
+    uint8_t getRootIndex() const { return _rootIndex; }
+    void setRootIndex(uint8_t idx) { _rootIndex = idx; }
     
     // Enable/disable scale (if disabled, all notes are considered active)
     void setScaleActive(bool active) { _scaleActive = active; }
@@ -68,6 +69,10 @@ private:
     
     // Helper to extract pitch class from a note name (e.g., "c" from "c4")
     void getPitchClass(const char* fullName, char* pitchClass) const;
+
+    // scale relevant parameters
+    uint8_t _scaleIndex;
+    uint8_t _rootIndex;
 };
 
 #endif // QUANTIZER_H

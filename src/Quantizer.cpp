@@ -49,25 +49,24 @@ void Quantizer::getPitchClass(const char* fullName, char* pitchClass) const {
     }
 }
 
-void Quantizer::applyScale(const char** scaleNotes, uint8_t numScaleNotes) {
-    // Set all notes to inactive first
-    for (auto& note : _notes) {
-        note.inScale = false;
+void Quantizer::applyScaleIntervals(const uint8_t* intervals, uint8_t numIntervals, uint8_t rootIndex) {
+    // Build a 12-slot lookup: is the relative semitone in the scale?
+    bool slot[12] = {false};
+    for (uint8_t i = 0; i < numIntervals; i++) {
+        slot[intervals[i] % 12] = true;
     }
     
-    // Activate notes that match the scale
     for (auto& note : _notes) {
-        char pitchClass[2];
-        getPitchClass(note.name, pitchClass);
-        
-        for (uint8_t i = 0; i < numScaleNotes; i++) {
-            if (strcmp(pitchClass, scaleNotes[i]) == 0) {
-                note.inScale = true;
+        note.inScale = false;
+        char pc = note.name[0];
+        for (int i = 0; i < 12; i++) {
+            if (NOTE_NAMES[i][0] == pc) {
+                int rel = (i - (int)rootIndex + 12) % 12;
+                note.inScale = slot[rel];
                 break;
             }
         }
     }
-    
     _scaleActive = true;
 }
 
