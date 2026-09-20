@@ -236,6 +236,7 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
                 file.close();
                 return false;
             }
+            _quantizers[track].setRangeParams(startDAC, endDAC, numNotes);
         }
     }
 

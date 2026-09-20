@@ -190,3 +190,9 @@ void Quantizer::setNoteInScale(uint8_t index, bool inScale) {
         _notes[index].inScale = inScale;
     }
 }
+
+void Quantizer::setRangeParams(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
+    _startDAC = startDAC;
+    _endDAC = endDAC;
+    _numNotes = numNotes;
+}

@@ -36,10 +36,11 @@ public:
     // Get the nearest note index for a raw CV value
     uint8_t getNoteIndex(uint16_t rawCV) const;
     
-    // Get range parameters (for storage)
+    // range parameters (for storage)
     uint16_t getStartDAC() const { return _startDAC; }
     uint16_t getEndDAC() const { return _endDAC; }
     uint8_t getNumNotesInScale() const { return _numNotes; }
+    void setRangeParams(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes);
     
     // ---- NEW: Scale management ----
     void applyScaleIntervals(const uint8_t* intervals, uint8_t numIntervals, uint8_t rootIndex);
