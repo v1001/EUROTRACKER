@@ -338,11 +338,28 @@ void SongSequencer::startPlayback() {
 
 void SongSequencer::newCurrentProject() {
     _songData.init();
+
+    // Clear any pending gate/CV events from the previous song.
+    // Queues are owned by SongSequencer, not by the sequencers, so they
+    // survive recreation and must be emptied explicitly.
+    for (int i = 0; i < NUM_TRACKS; i++) _gateQueues[i].clear();
+    for (int i = 0; i < 4; i++)         _cvQueues[i].clear();
+
+    // Recreate sequencers with fresh state.
+    // Null-then-delete: the timer ISR reads _sequencers[i] and must never
+    // see a dangling pointer.
+    for (int i = 0; i < NUM_TRACKS; i++) {
+        StepSequencer* old = _sequencers[i];
+        _sequencers[i] = nullptr;
+        delete old;
+    }
+    initSequencers();   // also wires queues, quantizer refs, calls updateSequencersFromStep(0, true)
+
     _currentPlayStep = 0;
     _currentStepTickCounter = 0;
     _stepTicksRemaining = _songData.getStepLengthInTicks(0);
-    updateSequencersFromStep(0, true);
+
     saveCurrentProject();
     _songUI.clearSaveFlag();
-    _songUI.resetCursor();   // reset UI cursor
+    _songUI.resetCursor();
 }
