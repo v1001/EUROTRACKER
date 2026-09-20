@@ -32,11 +32,11 @@ static const uint8_t SUPERLOCRIAN[] = {0,1,3,5,6,8,10};        // 7th mode of me
 static const ScalePattern SCALE_PATTERNS[] = {
     {"Chromatic", CHROMATIC, 12},
     {"Major", MAJOR, 7},
-    {"Natural Minor", NATURAL_MINOR, 7},
-    {"Pentatonic Major", PENTATONIC_MAJOR, 5},
+    {"Nat. Min", NATURAL_MINOR, 7},
+    {"Pent. Maj", PENTATONIC_MAJOR, 5},
     {"Blues", BLUES, 6},
-    {"Harmonic Minor", HARMONIC_MINOR, 7},
-    {"Melodic Minor", MELODIC_MINOR, 7},
+    {"Harm. Min", HARMONIC_MINOR, 7},
+    {"Melod. Min", MELODIC_MINOR, 7},
     {"Dorian", DORIAN, 7},
     {"Phrygian", PHRYGIAN, 7},
     {"Lydian", LYDIAN, 7},
@@ -45,9 +45,9 @@ static const ScalePattern SCALE_PATTERNS[] = {
     {"Whole Tone", WHOLE_TONE, 6},
     {"Diminished", DIMINISHED, 8},
     {"Augmented", AUGMENTED, 6},
-    {"Hungarian Minor", HUNGARIAN_MINOR, 7},
-    {"Lydian Dominant", LYDIAN_DOMINANT, 7},
-    {"Super Locrian", SUPERLOCRIAN, 7},
+    {"Hungr. Min", HUNGARIAN_MINOR, 7},
+    {"Lydian Dom", LYDIAN_DOMINANT, 7},
+    {"Super Locr", SUPERLOCRIAN, 7},
 };
 
 static const uint8_t NUM_SCALES = sizeof(SCALE_PATTERNS) / sizeof(ScalePattern);

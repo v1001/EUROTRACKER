@@ -79,76 +79,35 @@ void Quantizer::applyScaleIntervals(const uint8_t* intervals, uint8_t numInterva
 }
 
 const Quantizer::Note& Quantizer::getNote(uint8_t index) const {
-    if (index >= _notes.size()) {
-        return _notes[_notes.size() - 1];
-    }
+    static const Note emptyNote = {{0}, 0, false};
+    if (index == 0xFF || index >= _notes.size()) return emptyNote;
     return _notes[index];
 }
 
 const char* Quantizer::getNoteName(uint8_t index) const {
-    if (index >= _notes.size()) {
-        return _notes[_notes.size() - 1].name;
-    }
+    if (index == 0xFF || index >= _notes.size()) return "";
     return _notes[index].name;
 }
 
 uint16_t Quantizer::getNoteDAC(uint8_t index) const {
-    if (index >= _notes.size()) {
-        return _notes[_notes.size() - 1].dacValue;
-    }
+    if (index == 0xFF || index >= _notes.size()) return 0;
     return _notes[index].dacValue;
 }
 
 uint16_t Quantizer::quantize(uint16_t rawCV) const {
-    if (_notes.empty()) {
-        return rawCV;
-    }
-    
-    // If scale is inactive, quantize to nearest note (chromatic)
-    if (!_scaleActive) {
-        uint8_t idx = getNoteIndex(rawCV);
-        return _notes[idx].dacValue;
-    }
-    
-    // Scale is active: find nearest note that is in scale
-    // First, check if there is at least one active note
-    bool hasActiveNote = false;
-    for (const auto& note : _notes) {
-        if (note.inScale) {
-            hasActiveNote = true;
-            break;
-        }
-    }
-    if (!hasActiveNote) {
-        return rawCV;  // No active notes – return unquantized
-    }
-    
-    uint8_t bestIdx = 0;
-    uint16_t bestDiff = 0xFFFF;
-    
-    for (uint8_t i = 0; i < _notes.size(); i++) {
-        if (!_notes[i].inScale) continue;  // skip inactive notes
-        
-        uint16_t noteDac = _notes[i].dacValue;
-        uint16_t diff = (rawCV > noteDac) ? (rawCV - noteDac) : (noteDac - rawCV);
-        if (diff < bestDiff) {
-            bestDiff = diff;
-            bestIdx = i;
-        }
-    }
-    
-    return _notes[bestIdx].dacValue;
+    uint8_t idx = getNoteIndex(rawCV);
+    if (idx == 0xFF) return rawCV;
+    return _notes[idx].dacValue;
 }
 
 uint8_t Quantizer::getNoteIndex(uint16_t rawCV) const {
-    if (_notes.empty()) {
-        return 0;
-    }
-    
-    uint8_t bestIdx = 0;
+    if (_notes.empty()) return 0xFF;
+
+    uint8_t bestIdx = 0xFF;
     uint16_t bestDiff = 0xFFFF;
-    
+
     for (uint8_t i = 0; i < _notes.size(); i++) {
+        if (_scaleActive && !_notes[i].inScale) continue;
         uint16_t noteDac = _notes[i].dacValue;
         uint16_t diff = (rawCV > noteDac) ? (rawCV - noteDac) : (noteDac - rawCV);
         if (diff < bestDiff) {
@@ -156,8 +115,7 @@ uint8_t Quantizer::getNoteIndex(uint16_t rawCV) const {
             bestIdx = i;
         }
     }
-    
-    return bestIdx;
+    return bestIdx;   // 0xFF if no in-scale notes exist
 }
 
 void Quantizer::clearNotes() {

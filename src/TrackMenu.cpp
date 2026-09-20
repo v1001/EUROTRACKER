@@ -89,10 +89,14 @@ void TrackMenu::draw() {
         drawSubMenu();
         return;
     }
-    // Main Track Menu drawing
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
     StepSequencer* seq = _songSequencer.getSequencer(_track);
+    bool quantOn = seq && seq->isQuantizerEnabled();
+
+    // Dynamic label for the quantizer entry
+    char quantizerLabel[20];
+    snprintf(quantizerLabel, sizeof(quantizerLabel), "Quantizer: %s", quantOn ? "ON" : "OFF");
 
     char valueBuffer[16];
     for (int i = 0; i < _numItems; i++) {
@@ -102,12 +106,12 @@ void TrackMenu::draw() {
         const char* value = "";
 
         switch (item) {
-            case MENU_QUANTIZER_SETTINGS: itemName = "Quantizer"; break;
-            case MENU_CV_RANGE_LOW:    itemName = "CV Low";    break;
-            case MENU_CV_RANGE_HIGH:   itemName = "CV High";   break;
-            case MENU_SWING:           itemName = "Swing";     break;
+            case MENU_QUANTIZER_SETTINGS: itemName = quantizerLabel; break;
+            case MENU_CV_RANGE_LOW:    itemName = quantOn ? "Lowest Note" : "CV Low"; break;
+            case MENU_CV_RANGE_HIGH:   itemName = quantOn ? "Highest Note" : "CV High"; break;
+            case MENU_SWING:           itemName = "Swing"; break;
             case MENU_RESET_ON_STEP:   itemName = "Reset Step"; break;
-            case MENU_EXIT:            itemName = "Exit";      break;
+            case MENU_EXIT:            itemName = "Exit"; break;
         }
 
         bool selected = (i == _selectedIndex);
@@ -115,11 +119,23 @@ void TrackMenu::draw() {
         if (selected) {
             if (item != MENU_EXIT && item != MENU_QUANTIZER_SETTINGS) {
                 switch (item) {
-                    case MENU_CV_RANGE_LOW:     sprintf(valueBuffer, "%d", _editValue); value = valueBuffer; break;
-                    case MENU_CV_RANGE_HIGH:    sprintf(valueBuffer, "%d", _editValue); value = valueBuffer; break;
-                    case MENU_SWING:            sprintf(valueBuffer, "%d%%", _editValue); value = valueBuffer; break;
-                    case MENU_RESET_ON_STEP:    value = _editValue ? "RESET" : "KEEP"; break;
-                    default: break;
+                    case MENU_CV_RANGE_LOW:
+                        formatCVDisplay((uint16_t)_editValue, valueBuffer, sizeof(valueBuffer));
+                        value = valueBuffer;
+                        break;
+                    case MENU_CV_RANGE_HIGH:
+                        formatCVDisplay((uint16_t)_editValue, valueBuffer, sizeof(valueBuffer));
+                        value = valueBuffer;
+                        break;
+                    case MENU_SWING:
+                        sprintf(valueBuffer, "%d%%", _editValue);
+                        value = valueBuffer;
+                        break;
+                    case MENU_RESET_ON_STEP:
+                        value = _editValue ? "RESET" : "KEEP";
+                        break;
+                    default:
+                        break;
                 }
             } else if (item == MENU_QUANTIZER_SETTINGS) {
                 value = ">";
@@ -127,12 +143,26 @@ void TrackMenu::draw() {
         } else {
             if (item != MENU_EXIT) {
                 switch (item) {
-                    case MENU_QUANTIZER_SETTINGS: value = ">"; break;
-                    case MENU_CV_RANGE_LOW:     sprintf(valueBuffer, "%d", seq->getMinCV()); value = valueBuffer; break;
-                    case MENU_CV_RANGE_HIGH:    sprintf(valueBuffer, "%d", seq->getMaxCV()); value = valueBuffer; break;
-                    case MENU_SWING:            sprintf(valueBuffer, "%d%%", seq->getSwingAmount()); value = valueBuffer; break;
-                    case MENU_RESET_ON_STEP:    value = seq->getResetOnStep() ? "RESET" : "KEEP"; break;
-                    default: break;
+                    case MENU_QUANTIZER_SETTINGS:
+                        value = ">";
+                        break;
+                    case MENU_CV_RANGE_LOW:
+                        formatCVDisplay(seq->getMinCV(), valueBuffer, sizeof(valueBuffer));
+                        value = valueBuffer;
+                        break;
+                    case MENU_CV_RANGE_HIGH:
+                        formatCVDisplay(seq->getMaxCV(), valueBuffer, sizeof(valueBuffer));
+                        value = valueBuffer;
+                        break;
+                    case MENU_SWING:
+                        sprintf(valueBuffer, "%d%%", seq->getSwingAmount());
+                        value = valueBuffer;
+                        break;
+                    case MENU_RESET_ON_STEP:
+                        value = seq->getResetOnStep() ? "RESET" : "KEEP";
+                        break;
+                    default:
+                        break;
                 }
             }
         }
@@ -187,6 +217,9 @@ void TrackMenu::handleEditing() {
 
     StepSequencer* seq = _songSequencer.getSequencer(_track);
 
+    bool quantized = isQuantizerActive();
+    Quantizer& q = _songSequencer.getSongData().getQuantizer(_track);
+
     if (encAChanged || encBChanged) {
         int deltaA = (encAChanged) ? ((encPosA > _lastEncPosA) ? 1 : -1) : 0;
         int deltaB = (encBChanged) ? ((encPosB > _lastEncPosB) ? 1 : -1) : 0;
@@ -196,17 +229,62 @@ void TrackMenu::handleEditing() {
         if (item != MENU_EXIT && item != MENU_QUANTIZER_SETTINGS) {
             switch (item) {
                 case MENU_CV_RANGE_LOW:
-                    if (encAChanged) _editValue += deltaA * 50;
-                    if (encBChanged) _editValue += deltaB;
-                    if (_editValue < 0) _editValue = 0;
-                    if (_editValue > seq->getMaxCV() - 100) _editValue = seq->getMaxCV() - 100;
+                    if (quantized) {
+                        uint8_t curIdx = q.getNoteIndex((uint16_t)_editValue);
+                        int maxIdx = (int)q.getNoteIndex(seq->getMaxCV());
+                        if (encAChanged && curIdx != 0xFF) {
+                            int dir = (deltaA > 0) ? 1 : -1;
+                            int n = (deltaA > 0) ? deltaA : -deltaA;
+                            int idx = curIdx;
+                            for (int k = 0; k < n; k++) {
+                                if (dir > 0) {
+                                    for (int i = idx + 1; i <= maxIdx; i++) {
+                                        if (q.getNote((uint8_t)i).inScale) { idx = i; break; }
+                                    }
+                                } else {
+                                    for (int i = idx - 1; i >= 0; i--) {
+                                        if (q.getNote((uint8_t)i).inScale) { idx = i; break; }
+                                    }
+                                }
+                            }
+                            _editValue = q.getNoteDAC((uint8_t)idx);
+                        }
+                    } else {
+                        if (encAChanged) _editValue += deltaA * 50;
+                        if (encBChanged) _editValue += deltaB;
+                        if (_editValue < 0) _editValue = 0;
+                        if (_editValue > seq->getMaxCV() - 100) _editValue = seq->getMaxCV() - 100;
+                    }
                     applySetting();
                     break;
                 case MENU_CV_RANGE_HIGH:
-                    if (encAChanged) _editValue += deltaA * 50;
-                    if (encBChanged) _editValue += deltaB;
-                    if (_editValue > 4095) _editValue = 4095;
-                    if (_editValue < seq->getMinCV() + 100) _editValue = seq->getMinCV() + 100;
+                    if (quantized) {
+                        uint8_t curIdx = q.getNoteIndex((uint16_t)_editValue);
+                        int minIdx = (int)q.getNoteIndex(seq->getMinCV());
+                        if (encAChanged && curIdx != 0xFF) {
+                            int dir = (deltaA > 0) ? 1 : -1;
+                            int n = (deltaA > 0) ? deltaA : -deltaA;
+                            int idx = curIdx;
+                            int lastIdx = (int)q.getNumNotes() - 1;
+                            for (int k = 0; k < n; k++) {
+                                if (dir > 0) {
+                                    for (int i = idx + 1; i <= lastIdx; i++) {
+                                        if (q.getNote((uint8_t)i).inScale) { idx = i; break; }
+                                    }
+                                } else {
+                                    for (int i = idx - 1; i >= minIdx; i--) {
+                                        if (q.getNote((uint8_t)i).inScale) { idx = i; break; }
+                                    }
+                                }
+                            }
+                            _editValue = q.getNoteDAC((uint8_t)idx);
+                        }
+                    } else {
+                        if (encAChanged) _editValue += deltaA * 50;
+                        if (encBChanged) _editValue += deltaB;
+                        if (_editValue > 4095) _editValue = 4095;
+                        if (_editValue < seq->getMinCV() + 100) _editValue = seq->getMinCV() + 100;
+                    }
                     applySetting();
                     break;
                 case MENU_SWING:
@@ -394,4 +472,27 @@ void TrackMenu::drawSubMenu() {
 void TrackMenu::saveAndExit() {
     applySetting();
     _exitRequested = true;
+}
+
+void TrackMenu::formatCVDisplay(uint16_t cv, char* buf, size_t bufSize) {
+    StepSequencer* seq = _songSequencer.getSequencer(_track);
+    if (seq && seq->isQuantizerEnabled()) {
+        Quantizer& q = _songSequencer.getSongData().getQuantizer(_track);
+        uint8_t idx = q.getNoteIndex(cv);
+        if (idx != 0xFF) {
+            snprintf(buf, bufSize, "%s", q.getNoteName(idx));
+            return;
+        }
+    }
+    snprintf(buf, bufSize, "%d", cv);
+}
+
+bool TrackMenu::isQuantizerActive() {
+    StepSequencer* seq = _songSequencer.getSequencer(_track);
+    if (!seq || !seq->isQuantizerEnabled()) return false;
+    Quantizer& q = _songSequencer.getSongData().getQuantizer(_track);
+    for (uint8_t i = 0; i < q.getNumNotes(); i++) {
+        if (q.getNote(i).inScale) return true;
+    }
+    return false;
 }

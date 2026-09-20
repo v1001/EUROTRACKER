@@ -178,6 +178,8 @@ void StepSequencer::onStep() {
         // CV is a raw 16-bit DAC value (0-4095)
         // If quantizer is enabled, snap to nearest note during playback
         uint16_t targetDAC = _pattern->getCV(stepIndex);
+        if (targetDAC < _minCV) targetDAC = _minCV;
+        if (targetDAC > _maxCV) targetDAC = _maxCV;
         if (_quantizerEnabled && _quantizer != nullptr) {
             targetDAC = _quantizer->quantize(targetDAC);
         }

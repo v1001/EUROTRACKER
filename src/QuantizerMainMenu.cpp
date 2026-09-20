@@ -112,13 +112,13 @@ void QuantizerMainMenu::draw() {
     char scaleLabel[24];
     // "Scale: c Pentatonic Maj" would overflow; keep total ≤ 21 chars
     // Reserve 8 chars for "Scale: " + root + space = 8 chars, leaving ~13 for the scale name
-    snprintf(scaleLabel, sizeof(scaleLabel), "Scale: %s %.12s", rootName, scaleName);
+    snprintf(scaleLabel, sizeof(scaleLabel), "Scale: %s %-10s >", rootName, scaleName);
 
     const char* items[5];
     items[ITEM_ENABLE]   = "Enable";
-    items[ITEM_GENERATE] = "Generate";
+    items[ITEM_GENERATE] = "Generate            >";
     items[ITEM_SCALE]    = scaleLabel;
-    items[ITEM_NOTES]    = "Notes";
+    items[ITEM_NOTES]    = "Notes               >";
     items[ITEM_EXIT]     = "Exit";
 
     for (int i = 0; i <= ITEM_EXIT; i++) {

@@ -198,26 +198,45 @@ void StepSequencerUI::handleEncoders() {
         int change = (encAPos > _lastEncoderAPos) ? 1 : -1;
         
         if (change != 0) {
-            if (_editModeEncA == 0) {
-                // CV editing
+            if (_editModeEncA == 0) { // CV editing
+            
+                uint16_t raw = _pattern->getCV(_selectedStep);
+                uint16_t minCV = _sequencer->getMinCV();
+                uint16_t maxCV = _sequencer->getMaxCV();
+
+                // Clamp
+                uint16_t clamped = raw;
+                if (clamped < minCV) clamped = minCV;
+                if (clamped > maxCV) clamped = maxCV;
+                // Check for valid note index
+                uint8_t currentIdx = 0xFF;
                 if (_quantizerEnabled && _quantizer) {
-                    // Quantized: change note index
-                    uint16_t raw = _pattern->getCV(_selectedStep);
-                    uint8_t noteIndex = _quantizer->getNoteIndex(raw);
-                    if (noteIndex >= _quantizer->getNumNotes()) noteIndex = _quantizer->getNumNotes() - 1;
-                    noteIndex += change;
-                    if (noteIndex >= _quantizer->getNumNotes()) noteIndex = _quantizer->getNumNotes() - 1;
-                    uint16_t newRaw = _quantizer->getNoteDAC(noteIndex);
-                    _pattern->setCV(_selectedStep, newRaw);
+                    currentIdx = _quantizer->getNoteIndex(clamped);
+                }
+                if (currentIdx != 0xFF) {
+                    // Reachable bounds
+                    uint8_t qMinIdx = _quantizer->getNoteIndex(minCV);
+                    uint8_t qMaxIdx = _quantizer->getNoteIndex(maxCV);
+                    // Both are valid since currentIdx != 0xFF
+                    int newIdx = currentIdx;
+                    if (change > 0) {
+                        for (int i = currentIdx + 1; i <= (int)qMaxIdx; i++) {
+                            if (_quantizer->getNote(i).inScale) { newIdx = i; break; }
+                        }
+                    } else if (change < 0) {
+                        for (int i = currentIdx - 1; i >= (int)qMinIdx; i--) {
+                            if (_quantizer->getNote(i).inScale) { newIdx = i; break; }
+                        }
+                    }
+                    _pattern->setCV(_selectedStep, _quantizer->getNoteDAC((uint8_t)newIdx));
                 } else {
-                    // Unquantized: step by (max-min)/100
-                    uint16_t step = (_sequencer->getMaxCV() - _sequencer->getMinCV()) / 100;
-                    if (step == 0) step = 1; // avoid zero step
-                    uint16_t raw = _pattern->getCV(_selectedStep);
+                    // Unquantized
+                    uint16_t step = (maxCV - minCV) / 100;
+                    if (step == 0) step = 1;
                     int newRaw = raw + change * step;
-                    if (newRaw > _sequencer->getMaxCV()) newRaw = _sequencer->getMaxCV();
-                    if (newRaw < _sequencer->getMinCV()) newRaw = _sequencer->getMinCV();
-                    _pattern->setCV(_selectedStep, newRaw);
+                    if (newRaw > (int)maxCV) newRaw = maxCV;
+                    if (newRaw < (int)minCV) newRaw = minCV;
+                    _pattern->setCV(_selectedStep, (uint16_t)newRaw);
                 }
                 _displayMode = 0;
             } else if (_editModeEncA == 1) {
@@ -372,11 +391,25 @@ uint16_t StepSequencerUI::mapPercentToRaw(uint8_t percent) const {
 
 const char* StepSequencerUI::getQuantizedNoteNameOrCV(uint16_t cvValue) {
     static char buffer[6];
+
+    // Clamp first
+    uint16_t minCV = _sequencer->getMinCV();
+    uint16_t maxCV = _sequencer->getMaxCV();
+    if (cvValue < minCV) cvValue = minCV;
+    if (cvValue > maxCV) cvValue = maxCV;
+
     if (!_quantizerEnabled || !_quantizer) {
         uint8_t percent = mapRawToPercent(cvValue);
         sprintf(buffer, "%02d%%", percent);
         return buffer;
     }
+
     uint8_t noteIndex = _quantizer->getNoteIndex(cvValue);
+    if (noteIndex == 0xFF) {
+        // No in-scale notes available — fall back to percent display
+        uint8_t percent = mapRawToPercent(cvValue);
+        sprintf(buffer, "%02d%%", percent);
+        return buffer;
+    }
     return _quantizer->getNoteName(noteIndex);
 }

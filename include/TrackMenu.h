@@ -74,6 +74,9 @@ private:
     void exitSubMenu();
     void handleSubMenuUpdate();
     void drawSubMenu();
+
+    void formatCVDisplay(uint16_t cv, char* buf, size_t bufSize);
+    bool isQuantizerActive();
 };
 
 #endif
