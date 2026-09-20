@@ -3,7 +3,8 @@
 
 GenerateMenu::GenerateMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer, int track)
     : _display(display), _userInput(userInput), _songSequencer(songSequencer), _track(track),
-      _selectedIndex(0), _minCV(0), _maxCV(4095), _numNotes(61), _exitRequested(false) {
+      _selectedIndex(0), _minCV(0), _maxCV(4095), _numNotes(61), _exitRequested(false),
+      _lastEncPosA(0), _lastEncPosB(0), _lastNavTime(0), _wasCentered(true){
 }
 
 GenerateMenu::~GenerateMenu() {
@@ -12,6 +13,10 @@ GenerateMenu::~GenerateMenu() {
 void GenerateMenu::enter() {
     _selectedIndex = 0;
     _exitRequested = false;
+    _lastEncPosA = _userInput.encoder_a.position;
+    _lastEncPosB = _userInput.encoder_b.position;
+    _lastNavTime = 0;
+    _wasCentered = true;
     loadCurrentValue();
 }
 
@@ -29,40 +34,37 @@ void GenerateMenu::update() {
 
 void GenerateMenu::handleNavigation() {
     unsigned long now = millis();
-    static unsigned long lastNavTime = 0;
-    static bool wasCentered = true;
-    if (now - lastNavTime < 100) return;
+    if (now - _lastNavTime < 100) return;
 
     int dy = 0;
     if (_userInput.joystick.y_position > 30) dy = -1;
     else if (_userInput.joystick.y_position < -30) dy = 1;
 
     if (dy != 0) {
-        if (wasCentered || (now - lastNavTime) > 50) {
+        if (_wasCentered || (now - _lastNavTime) > 50) {
             int newIndex = _selectedIndex + dy;
             if (newIndex >= 0 && newIndex <= ITEM_EXIT) {
                 _selectedIndex = newIndex;
-                lastNavTime = now;
+                _lastNavTime = now;
             }
-            wasCentered = false;
+            _wasCentered = false;
         }
     } else {
-        wasCentered = true;
+        _wasCentered = true;
     }
-    lastNavTime = now;
+    _lastNavTime = now;
 }
 
 void GenerateMenu::handleEditing() {
     long encPosA = _userInput.encoder_a.position;
     long encPosB = _userInput.encoder_b.position;
-    static long lastEncPosA = 0, lastEncPosB = 0;
 
-    bool encAChanged = (encPosA != lastEncPosA);
-    bool encBChanged = (encPosB != lastEncPosB);
+    bool encAChanged = (encPosA != _lastEncPosA);
+    bool encBChanged = (encPosB != _lastEncPosB);
 
     if (encAChanged || encBChanged) {
-        int deltaA = (encAChanged) ? ((encPosA > lastEncPosA) ? 1 : -1) : 0;
-        int deltaB = (encBChanged) ? ((encPosB > lastEncPosB) ? 1 : -1) : 0;
+        int deltaA = (encAChanged) ? ((encPosA > _lastEncPosA) ? 1 : -1) : 0;
+        int deltaB = (encBChanged) ? ((encPosB > _lastEncPosB) ? 1 : -1) : 0;
 
         // Only editable items (Min CV, Max CV, Num Notes)
         switch (_selectedIndex) {
@@ -86,8 +88,8 @@ void GenerateMenu::handleEditing() {
                 break;
         }
 
-        lastEncPosA = encPosA;
-        lastEncPosB = encPosB;
+        _lastEncPosA = encPosA;
+        _lastEncPosB = encPosB;
     }
 
     // Joystick click

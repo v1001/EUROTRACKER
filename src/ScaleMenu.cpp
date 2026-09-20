@@ -3,7 +3,8 @@
 
 ScaleMenu::ScaleMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer, int track)
     : _display(display), _userInput(userInput), _songSequencer(songSequencer), _track(track),
-      _selectedIndex(0), _selectedScaleIndex(0), _selectedRootIndex(0), _exitRequested(false) {
+      _selectedIndex(0), _selectedScaleIndex(0), _selectedRootIndex(0), _exitRequested(false),
+      _lastEncPosA(0), _lastEncPosB(0), _lastNavTime(0), _wasCentered(true) {
 }
 
 ScaleMenu::~ScaleMenu() {
@@ -12,6 +13,10 @@ ScaleMenu::~ScaleMenu() {
 void ScaleMenu::enter() {
     _selectedIndex = 0;
     _exitRequested = false;
+    _lastEncPosA = _userInput.encoder_a.position;
+    _lastEncPosB = _userInput.encoder_b.position;
+    _lastNavTime = 0;
+    _wasCentered = true;
     loadCurrentValue();
 }
 
@@ -28,36 +33,33 @@ void ScaleMenu::update() {
 
 void ScaleMenu::handleNavigation() {
     unsigned long now = millis();
-    static unsigned long lastNavTime = 0;
-    static bool wasCentered = true;
-    if (now - lastNavTime < 100) return;
+    if (now - _lastNavTime < 100) return;
 
     int dy = 0;
     if (_userInput.joystick.y_position > 30) dy = -1;
     else if (_userInput.joystick.y_position < -30) dy = 1;
 
     if (dy != 0) {
-        if (wasCentered || (now - lastNavTime) > 50) {
+        if (_wasCentered || (now - _lastNavTime) > 50) {
             int newIndex = _selectedIndex + dy;
             if (newIndex >= 0 && newIndex <= ITEM_EXIT) {
                 _selectedIndex = newIndex;
-                lastNavTime = now;
+                _lastNavTime = now;
             }
-            wasCentered = false;
+            _wasCentered = false;
         }
     } else {
-        wasCentered = true;
+        _wasCentered = true;
     }
-    lastNavTime = now;
+    _lastNavTime = now;
 }
 
 void ScaleMenu::handleEditing() {
     long encPosA = _userInput.encoder_a.position;
-    static long lastEncPosA = 0;
-    bool encAChanged = (encPosA != lastEncPosA);
+    bool encAChanged = (encPosA != _lastEncPosA);
 
     if (encAChanged) {
-        int deltaA = (encPosA > lastEncPosA) ? 1 : -1;
+        int deltaA = (encPosA > _lastEncPosA) ? 1 : -1;
 
         if (_selectedIndex == ITEM_SCALE) {
             int numScales = getNumScalePatterns();
@@ -72,7 +74,7 @@ void ScaleMenu::handleEditing() {
             _selectedRootIndex = (uint8_t)newIdx;
         }
 
-        lastEncPosA = encPosA;
+        _lastEncPosA = encPosA;
     }
 
     // Joystick click

@@ -40,6 +40,11 @@ private:
     void handleEditing();
     void apply();
     void loadCurrentValue();
+
+    long _lastEncPosA;
+    long _lastEncPosB;
+    unsigned long _lastNavTime;
+    bool _wasCentered;
 };
 
 #endif

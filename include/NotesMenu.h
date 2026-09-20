@@ -29,6 +29,11 @@ private:
 
     void handleNavigation();
     void handleEditing();
+
+    long _lastEncPosA;
+    long _lastEncPosB;
+    unsigned long _lastNavTime;
+    bool _wasCentered;
 };
 
 #endif

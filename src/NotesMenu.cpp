@@ -2,7 +2,8 @@
 
 NotesMenu::NotesMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer, int track)
     : _display(display), _userInput(userInput), _songSequencer(songSequencer), _track(track),
-      _selectedIndex(0), _scrollOffset(0), _exitRequested(false) {
+      _selectedIndex(0), _scrollOffset(0), _exitRequested(false),
+      _lastEncPosA(0), _lastEncPosB(0), _lastNavTime(0), _wasCentered(true) {
 }
 
 NotesMenu::~NotesMenu() {
@@ -12,6 +13,10 @@ void NotesMenu::enter() {
     _selectedIndex = 0;
     _scrollOffset = 0;
     _exitRequested = false;
+    _lastEncPosA = _userInput.encoder_a.position;
+    _lastEncPosB = _userInput.encoder_b.position;
+    _lastNavTime = 0;
+    _wasCentered = true;
     // Ensure the quantizer has notes
     Quantizer& quantizer = _songSequencer.getSongData().getQuantizer(_track);
     if (quantizer.getNumNotes() == 0) {
@@ -26,16 +31,14 @@ void NotesMenu::update() {
 
 void NotesMenu::handleNavigation() {
     unsigned long now = millis();
-    static unsigned long lastNavTime = 0;
-    static bool wasCentered = true;
-    if (now - lastNavTime < 100) return;
+    if (now - _lastNavTime < 100) return;
 
     int dy = 0;
     if (_userInput.joystick.y_position > 30) dy = -1;
     else if (_userInput.joystick.y_position < -30) dy = 1;
 
     if (dy != 0) {
-        if (wasCentered || (now - lastNavTime) > 50) {
+        if (_wasCentered || (now - _lastNavTime) > 50) {
             Quantizer& quantizer = _songSequencer.getSongData().getQuantizer(_track);
             int numNotes = quantizer.getNumNotes();
             if (numNotes == 0) return;
@@ -47,27 +50,26 @@ void NotesMenu::handleNavigation() {
                 } else if (_selectedIndex >= _scrollOffset + 6) {
                     _scrollOffset = _selectedIndex - 5;
                 }
-                lastNavTime = now;
+                _lastNavTime = now;
             }
-            wasCentered = false;
+            _wasCentered = false;
         }
     } else {
-        wasCentered = true;
+        _wasCentered = true;
     }
-    lastNavTime = now;
+    _lastNavTime = now;
 }
 
 void NotesMenu::handleEditing() {
     long encPosA = _userInput.encoder_a.position;
     long encPosB = _userInput.encoder_b.position;
-    static long lastEncPosA = 0, lastEncPosB = 0;
 
-    bool encAChanged = (encPosA != lastEncPosA);
-    bool encBChanged = (encPosB != lastEncPosB);
+    bool encAChanged = (encPosA != _lastEncPosA);
+    bool encBChanged = (encPosB != _lastEncPosB);
 
     if (encAChanged || encBChanged) {
-        int deltaA = (encAChanged) ? ((encPosA > lastEncPosA) ? 1 : -1) : 0;
-        int deltaB = (encBChanged) ? ((encPosB > lastEncPosB) ? 1 : -1) : 0;
+        int deltaA = (encAChanged) ? ((encPosA > _lastEncPosA) ? 1 : -1) : 0;
+        int deltaB = (encBChanged) ? ((encPosB > _lastEncPosB) ? 1 : -1) : 0;
 
         Quantizer& quantizer = _songSequencer.getSongData().getQuantizer(_track);
         if (_selectedIndex < quantizer.getNumNotes()) {
@@ -95,8 +97,8 @@ void NotesMenu::handleEditing() {
                 quantizer.setNoteDAC(_selectedIndex, (uint16_t)newVal);
             }
         }
-        lastEncPosA = encPosA;
-        lastEncPosB = encPosB;
+        _lastEncPosA = encPosA;
+        _lastEncPosB = encPosB;
     }
 
     // Joystick click toggles inScale

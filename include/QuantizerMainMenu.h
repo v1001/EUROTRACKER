@@ -54,6 +54,11 @@ private:
     void handleEditing();
     void applySetting();
     void loadCurrentValue();
+
+    long _lastEncPosA;
+    long _lastEncPosB;
+    unsigned long _lastNavTime;
+    bool _wasCentered;
 };
 
 #endif

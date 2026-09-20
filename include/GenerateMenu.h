@@ -39,9 +39,13 @@ private:
 
     void handleNavigation();
     void handleEditing();
-    void applySetting();
     void loadCurrentValue();
     void generate();
+
+    long _lastEncPosA;
+    long _lastEncPosB;
+    unsigned long _lastNavTime;
+    bool _wasCentered;
 };
 
 #endif
