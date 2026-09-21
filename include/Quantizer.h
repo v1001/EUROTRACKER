@@ -49,9 +49,7 @@ public:
     uint8_t getRootIndex() const { return _rootIndex; }
     void setRootIndex(uint8_t idx) { _rootIndex = idx; }
     void setNoteInScale(uint8_t index, bool inScale);
-    
-    // Enable/disable scale (if disabled, all notes are considered active)
-    bool isScaleActive() const { return _scaleActive; }
+    bool inScaleMatchesApplied() const;
     
     // Clear and rebuild
     void clearNotes();
@@ -66,7 +64,6 @@ private:
     uint16_t _startDAC;
     uint16_t _endDAC;
     uint8_t _numNotes;
-    bool _scaleActive;
     
     // Helper to extract pitch class from a note name (e.g., "c" from "c4")
     void getPitchClass(const char* fullName, char* pitchClass) const;

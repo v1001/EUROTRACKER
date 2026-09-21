@@ -1,11 +1,12 @@
 #include "Quantizer.h"
 #include <cstring>
+#include "Scales.h"
 
 // Natural notes: lowercase, sharp notes: uppercase (one character each)
 const char* Quantizer::NOTE_NAMES[12] = {"c", "C", "d", "D", "e", "f", "F", "g", "G", "a", "A", "b"};
 
 Quantizer::Quantizer() 
-    : _startDAC(0), _endDAC(4095), _numNotes(61), _scaleActive(true), _scaleIndex(0), _rootIndex(0) {
+    : _startDAC(0), _endDAC(4095), _numNotes(61), _scaleIndex(0), _rootIndex(0) {
     generateChromatic(0, 4095, 61);
 }
 
@@ -151,4 +152,28 @@ void Quantizer::setRangeParams(uint16_t startDAC, uint16_t endDAC, uint8_t numNo
     _startDAC = startDAC;
     _endDAC = endDAC;
     _numNotes = numNotes;
+}
+
+bool Quantizer::inScaleMatchesApplied() const {
+    const ScalePattern* pat = getScalePattern(_scaleIndex);
+    if (!pat) return false;
+
+    // Build the expected slot array from the applied scale pattern
+    bool slot[12] = {false};
+    for (uint8_t i = 0; i < pat->numNotes; i++) {
+        slot[pat->intervals[i] % 12] = true;
+    }
+
+    // Compare each note's inScale against what the scale would produce
+    for (const auto& note : _notes) {
+        char pc = note.name[0];
+        int idx = -1;
+        for (int i = 0; i < 12; i++) {
+            if (NOTE_NAMES[i][0] == pc) { idx = i; break; }
+        }
+        if (idx < 0) return false;
+        int rel = (idx - (int)_rootIndex + 12) % 12;
+        if (note.inScale != slot[rel]) return false;
+    }
+    return true;
 }

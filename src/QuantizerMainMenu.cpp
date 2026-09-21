@@ -106,7 +106,12 @@ void QuantizerMainMenu::draw() {
     static const char* NOTE_NAMES[12] = {"c","C","d","D","e","f","F","g","G","a","A","b"};
     Quantizer& q = _songSequencer.getSongData().getQuantizer(_track);
     const ScalePattern* pat = getScalePattern(q.getScaleIndex());
-    const char* scaleName = pat ? pat->name : "?";
+    const char* scaleName;
+    if (!pat || !q.inScaleMatchesApplied()) {
+        scaleName = "Custom";
+    } else {
+        scaleName = pat->name;
+    }
     const char* rootName  = NOTE_NAMES[q.getRootIndex()];
 
     char scaleLabel[24];
