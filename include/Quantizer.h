@@ -6,12 +6,16 @@
 
 class Quantizer {
 public:
+    // Natural notes: lowercase, sharp notes: uppercase (one character each).
+    // Shared by all modules that display or match pitch classes.
+    static const char* NOTE_NAMES[12];
+
     struct Note {
         char name[5];          // e.g., "C4", "C#4"
         uint16_t dacValue;     // 0-4095
         bool inScale;          // true if this note is part of the active scale
     };
-    
+
     // Constructor
     Quantizer();
     
@@ -59,15 +63,11 @@ public:
     void toggleNoteInScale(uint8_t index);
     
 private:
-    static const char* NOTE_NAMES[12];
     std::vector<Note> _notes;
     uint16_t _startDAC;
     uint16_t _endDAC;
     uint8_t _numNotes;
     
-    // Helper to extract pitch class from a note name (e.g., "c" from "c4")
-    void getPitchClass(const char* fullName, char* pitchClass) const;
-
     // scale relevant parameters
     uint8_t _scaleIndex;
     uint8_t _rootIndex;

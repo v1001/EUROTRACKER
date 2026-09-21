@@ -109,14 +109,11 @@ void ScaleMenu::draw() {
 
     const char* items[] = {"Scale", "Root", "Apply", "Exit"};
 
-    // Static storage for the note names (must persist for the display call)
-    static const char* NOTE_NAMES[12] = {"c", "C", "d", "D", "e", "f", "F", "g", "G", "a", "A", "b"};
-
     char scaleValue[20];
     const ScalePattern* pattern = getScalePattern(_selectedScaleIndex);
     snprintf(scaleValue, sizeof(scaleValue), "%.12s", pattern ? pattern->name : "?");
 
-    const char* rootValue = NOTE_NAMES[_selectedRootIndex];
+    const char* rootValue = Quantizer::NOTE_NAMES[_selectedRootIndex];
 
     for (int i = 0; i <= ITEM_EXIT; i++) {
         int y = i * 10;

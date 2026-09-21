@@ -103,16 +103,16 @@ void QuantizerMainMenu::draw() {
     _display.setTextColor(_display.colorWhite());
 
     // Build the composed label for the Scale item
-    static const char* NOTE_NAMES[12] = {"c","C","d","D","e","f","F","g","G","a","A","b"};
     Quantizer& q = _songSequencer.getSongData().getQuantizer(_track);
     const ScalePattern* pat = getScalePattern(q.getScaleIndex());
+    const char* rootName  = Quantizer::NOTE_NAMES[q.getRootIndex()];
     const char* scaleName;
     if (!pat || !q.inScaleMatchesApplied()) {
         scaleName = "Custom";
     } else {
         scaleName = pat->name;
     }
-    const char* rootName  = NOTE_NAMES[q.getRootIndex()];
+
 
     char scaleLabel[24];
     // "Scale: c Pentatonic Maj" would overflow; keep total ≤ 21 chars
