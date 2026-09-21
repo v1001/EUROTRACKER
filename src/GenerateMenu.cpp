@@ -112,7 +112,6 @@ void GenerateMenu::generate() {
     Quantizer& quantizer = _songSequencer.getSongData().getQuantizer(_track);
     quantizer.generateChromatic(_minCV, _maxCV, _numNotes);
     // Also set scale active? We'll keep it active by default.
-    quantizer.setScaleActive(true);
 }
 
 void GenerateMenu::draw() {

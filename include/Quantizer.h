@@ -51,7 +51,6 @@ public:
     void setNoteInScale(uint8_t index, bool inScale);
     
     // Enable/disable scale (if disabled, all notes are considered active)
-    void setScaleActive(bool active) { _scaleActive = active; }
     bool isScaleActive() const { return _scaleActive; }
     
     // Clear and rebuild

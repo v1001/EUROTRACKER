@@ -39,7 +39,6 @@ void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t nu
     for (auto& note : _notes) {
         note.inScale = true;
     }
-    _scaleActive = true;
 }
 
 void Quantizer::getPitchClass(const char* fullName, char* pitchClass) const {
@@ -75,7 +74,6 @@ void Quantizer::applyScaleIntervals(const uint8_t* intervals, uint8_t numInterva
             }
         }
     }
-    _scaleActive = true;
 }
 
 const Quantizer::Note& Quantizer::getNote(uint8_t index) const {
@@ -107,7 +105,7 @@ uint8_t Quantizer::getNoteIndex(uint16_t rawCV) const {
     uint16_t bestDiff = 0xFFFF;
 
     for (uint8_t i = 0; i < _notes.size(); i++) {
-        if (_scaleActive && !_notes[i].inScale) continue;
+        if (!_notes[i].inScale) continue;
         uint16_t noteDac = _notes[i].dacValue;
         uint16_t diff = (rawCV > noteDac) ? (rawCV - noteDac) : (noteDac - rawCV);
         if (diff < bestDiff) {
