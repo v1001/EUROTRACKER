@@ -42,21 +42,6 @@ void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t nu
     }
 }
 
-void Quantizer::getPitchClass(const char* fullName, char* pitchClass) const {
-    // Extract the first character(s) before the octave digit
-    // For "c4" -> "c", for "C4" -> "C"
-    size_t len = strlen(fullName);
-    if (len >= 2) {
-        // The first character is the pitch class, the last is the octave
-        // But we also have "c4" with one char + one digit, or could have "C4"
-        pitchClass[0] = fullName[0];
-        pitchClass[1] = '\0';
-    } else {
-        pitchClass[0] = 'c';
-        pitchClass[1] = '\0';
-    }
-}
-
 void Quantizer::applyScaleIntervals(const uint8_t* intervals, uint8_t numIntervals, uint8_t rootIndex) {
     // Build a 12-slot lookup: is the relative semitone in the scale?
     bool slot[12] = {false};
