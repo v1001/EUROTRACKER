@@ -46,9 +46,7 @@ private:
     
     static void IRAM_ATTR onExternalRisingEdge();
     static void IRAM_ATTR onTimerTick();
-    
-    // NEW: Internal method to start timer with fixed period
-    void _startTimerWithFixedPeriod(uint64_t periodUs);
+
 };
 
 #endif

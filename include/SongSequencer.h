@@ -33,7 +33,6 @@ public:
     // Sequencer mode management (called from main.cpp)
     void enterSequencerMode(int track, int step);
     void exitSequencerMode();
-    void setQuarterNoteTimeUs(uint64_t quarterNoteTimeUs) { _quarterNoteTimeUs = quarterNoteTimeUs; }
     void scheduleSequencerMode(int track, int step);
     StepSequencer* getSequencer(int track);
     void setSyncStart(bool enabled) { _syncStart = enabled; }
@@ -82,7 +81,6 @@ private:
     int _openSequencerTrack;
     uint32_t _currentStepTickCounter;
     uint32_t _stepTicksRemaining;
-    uint64_t _quarterNoteTimeUs;
     
     void initSequencers();
     void updateSequencersFromStep(int step, bool resetPosition);

@@ -95,17 +95,6 @@ bool SyncTimer::beginStandalone(uint16_t divider, TimerCallback callback, float 
     return true;
 }
 
-void SyncTimer::_startTimerWithFixedPeriod(uint64_t periodUs) {
-    if (!_timer) return;
-    
-    timerStop(_timer);
-    timerAlarmDisable(_timer);
-    timerWrite(_timer, 0);
-    timerAlarmWrite(_timer, periodUs, true);
-    timerAlarmEnable(_timer);
-    timerStart(_timer);
-}
-
 void IRAM_ATTR SyncTimer::onExternalRisingEdge() {
     if (!_instance) return;
     
