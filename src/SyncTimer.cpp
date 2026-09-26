@@ -19,6 +19,7 @@ SyncTimer::SyncTimer(uint8_t inputPin)
     , _callback(nullptr)
     , _tickPeriod(0)
     , _lastTickTime(0)
+    , _wrap_corr_accum(0)
 {
     _instance = this;
 }
@@ -41,6 +42,7 @@ bool SyncTimer::begin(uint16_t divider, TimerCallback callback, uint16_t ppqn) {
     _lastEdgeTime = 0;
     _lastTickTime = 0;
     _tickPeriod = 0;
+    _wrap_corr_accum = 0;
 
     pinMode(_inputPin, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(_inputPin), onExternalRisingEdge, RISING);
@@ -72,6 +74,7 @@ void SyncTimer::destroy() {
     _ticksSincePulse = 0;
     _t_int = 0;
     _period = 0;
+    _wrap_corr_accum = 0;
 }
 
 bool SyncTimer::beginStandalone(uint16_t divider, TimerCallback callback, float frequencyHz) {
@@ -220,7 +223,7 @@ void IRAM_ATTR SyncTimer::onTimerTick() {
 
     if (_instance->_standaloneMode) return;
 
-    // External LOCKED mode: increment ticks-since-pulse and check timeout
+    // External LOCKED mode
     if (_instance->_state == SYNC_LOCKED) {
         _instance->_ticksSincePulse++;
 
@@ -233,6 +236,45 @@ void IRAM_ATTR SyncTimer::onTimerTick() {
             _instance->_synchronized = false;
             _instance->_tickCount = 0;
             _instance->_ticksSincePulse = 0;
+            return;
+        }
+
+        // --- Wrap-time phase correction ---
+        // At each counter wrap (once per quarter note), measure how far the
+        // wrap sits from the nearest external pulse. Nudge _t_int by a small,
+        // proportional amount so the wrap converges toward the aligned pulse.
+        // This is a slow secondary loop and does not touch the PLL math.
+        if (_instance->_tickCount == 0 && _instance->_period > 0) {
+            uint32_t dt_prev = (uint32_t)(now - _instance->_lastEdgeTime);
+            uint32_t period  = (uint32_t)_instance->_period;
+
+            if (dt_prev < period) {
+                uint32_t dt_next = period - dt_prev;
+
+                // Signed error in µs.
+                //   positive = wrap is late (closer to previous pulse)
+                //   negative = wrap is early (closer to next pulse)
+                int32_t err_us = (dt_prev < dt_next)
+                               ?  (int32_t)dt_prev
+                               : -(int32_t)dt_next;
+
+                // Proportional correction; converge over ~8 wraps.
+                // Accumulator is in 1/256 µs units to avoid integer dead-band.
+                int32_t desired_256 = (err_us * 256) / (192 * 8);
+                _instance->_wrap_corr_accum += desired_256;
+
+                int32_t int_part = _instance->_wrap_corr_accum / 256;
+                _instance->_wrap_corr_accum -= int_part * 256;
+
+                if (int_part != 0) {
+                    int32_t t_signed = (int32_t)_instance->_t_int;
+                    t_signed -= int_part;             // late → smaller T
+                    if (t_signed < 1)      t_signed = 1;
+                    if (t_signed > 100000) t_signed = 100000;
+                    _instance->_t_int = (uint32_t)t_signed;
+                    timerAlarmWrite(_instance->_timer, _instance->_t_int, true);
+                }
+            }
         }
     }
 }

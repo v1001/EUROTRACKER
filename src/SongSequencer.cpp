@@ -161,7 +161,7 @@ StepSequencer* SongSequencer::getSequencer(int track) {
 
 void SongSequencer::processClockTick(uint16_t tickCount) {
     // Handle pending start (synchronized to next clock tick)
-    if (_pendingStart && ( tickCount % 48 == 0 || !_syncStart)) {
+    if (_pendingStart && ( tickCount == 0 || !_syncStart)) {
         _pendingStart = false;
         _songState = STATE_PLAY_SONG;
         _currentStepTickCounter = 0;

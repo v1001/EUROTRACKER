@@ -45,6 +45,7 @@ private:
     volatile uint8_t  _state;
     volatile uint16_t _ticksSincePulse; // ticks fired since last pulse
     volatile uint32_t _t_int;           // current internal tick period (µs)
+    volatile int32_t _wrap_corr_accum;   // fractional µs × 256, signed
 
     TimerCallback _callback;
 
