@@ -55,9 +55,13 @@ public:
     void resetEncoderTracking();
     void startPlayback();
 
+    void markProjectDirty();
+    void previewDAC(int track, uint16_t value);
+
 private:
     static const int NUM_TRACKS = 6;
     static const char* PROJECT_FILENAME;
+    uint16_t _lastDACValues[4];
   
     DisplayManager& _display;
     UserInput& _userInput;
