@@ -51,6 +51,8 @@ void NotesMenu::handleNavigation() {
                     _scrollOffset = _selectedIndex - 5;
                 }
                 _lastNavTime = now;
+                Quantizer& quantizer = _songSequencer.getSongData().getQuantizer(_track);
+                _songSequencer.previewDAC(_track, quantizer.getNoteDAC(_selectedIndex));
             }
             _wasCentered = false;
         }
@@ -95,6 +97,10 @@ void NotesMenu::handleEditing() {
 
             if ((uint16_t)newVal != current) {
                 quantizer.setNoteDAC(_selectedIndex, (uint16_t)newVal);
+                if ((uint16_t)newVal != current) {
+                    quantizer.setNoteDAC(_selectedIndex, (uint16_t)newVal);
+                    _songSequencer.previewDAC(_track, (uint16_t)newVal);
+                }
             }
         }
         _lastEncPosA = encPosA;

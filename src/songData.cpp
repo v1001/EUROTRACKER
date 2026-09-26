@@ -58,82 +58,57 @@ void SongData::clear() {
 }
 
 // ----------------------------------------------------------------------
-// File operations (streaming, version 3)
+// File operations (streaming, version 5)
 // ----------------------------------------------------------------------
 bool SongData::load(const char* filename, StepSequencer** sequencers) {
-    if (!SPIFFS.exists(filename)) {
-        return false;
-    }
+    if (!SPIFFS.exists(filename)) return false;
 
     File file = SPIFFS.open(filename, FILE_READ);
-    if (!file) {
-        return false;
-    }
+    if (!file) return false;
 
-    // ---- Read header ----
+    // ---- Header ----
     uint32_t magic;
-    if (file.read((uint8_t*)&magic, 4) != 4) {
-        file.close();
-        return false;
-    }
-    if (magic != FILE_MAGIC) {
-        file.close();
-        return false;
-    }
+    if (file.read((uint8_t*)&magic, 4) != 4) { file.close(); return false; }
+    if (magic != FILE_MAGIC) { file.close(); return false; }
 
     uint8_t version;
-    if (file.read(&version, 1) != 1) {
-        file.close();
-        return false;
-    }
-    // skip reserved 3 bytes
-    file.seek(file.position() + 3);
+    if (file.read(&version, 1) != 1) { file.close(); return false; }
+    if (version != FILE_VERSION) { file.close(); return false; }
 
-    // ---- Read song length ----
+    file.seek(file.position() + 3);   // reserved
+
+    // ---- Song length ----
     if (file.read((uint8_t*)&_length, sizeof(_length)) != sizeof(_length)) {
-        file.close();
-        return false;
+        file.close(); return false;
     }
     if (_length > MAX_SONG_LENGTH) _length = MAX_SONG_LENGTH;
 
-    // ---- Read dividers ----
+    // ---- Dividers ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         for (int step = 0; step < _length; step++) {
             if (file.read(&_dividerIndices[track][step], 1) != 1) {
-                file.close();
-                return false;
+                file.close(); return false;
             }
         }
     }
 
-    // ---- Read pattern data (16‑bit CV + separate 8‑bit flags) ----
+    // ---- Pattern data ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         for (int step = 0; step < _length; step++) {
             _patterns[track][step].init(PATTERN_STEPS);
             for (int s = 0; s < PATTERN_STEPS; s++) {
                 uint16_t cv;
-                if (file.read((uint8_t*)&cv, 2) != 2) {
-                    file.close();
-                    return false;
-                }
+                if (file.read((uint8_t*)&cv, 2) != 2) { file.close(); return false; }
                 uint8_t flags;
-                if (file.read(&flags, 1) != 1) {
-                    file.close();
-                    return false;
-                }
-                bool on = (flags & 0x01) != 0;   // bit 0 = ON
-                _patterns[track][step].setOn(s, on);
+                if (file.read(&flags, 1) != 1) { file.close(); return false; }
+                _patterns[track][step].setOn(s, (flags & 0x01) != 0);
                 _patterns[track][step].setCV(s, cv);
 
                 uint8_t prob, gate, decay, attack, ratchet, micro;
-                if (file.read(&prob, 1) != 1 ||
-                    file.read(&gate, 1) != 1 ||
-                    file.read(&decay, 1) != 1 ||
-                    file.read(&attack, 1) != 1 ||
-                    file.read(&ratchet, 1) != 1 ||
-                    file.read(&micro, 1) != 1) {
-                    file.close();
-                    return false;
+                if (file.read(&prob, 1) != 1 || file.read(&gate, 1) != 1 ||
+                    file.read(&decay, 1) != 1 || file.read(&attack, 1) != 1 ||
+                    file.read(&ratchet, 1) != 1 || file.read(&micro, 1) != 1) {
+                    file.close(); return false;
                 }
                 _patterns[track][step].setProbability(s, prob);
                 _patterns[track][step].setGateLength(s, gate);
@@ -145,128 +120,80 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
         }
     }
 
-    // ---- Read pattern lengths ----
+    // ---- Pattern lengths ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         for (int step = 0; step < _length; step++) {
             uint8_t numSteps;
-            if (file.read(&numSteps, 1) != 1) {
-                file.close();
-                return false;
-            }
+            if (file.read(&numSteps, 1) != 1) { file.close(); return false; }
             if (numSteps > StepPattern::MAX_STEPS) numSteps = StepPattern::MAX_STEPS;
             _patterns[track][step].setNumSteps(numSteps);
         }
     }
 
-    // ---- Read quantizers (enabled + notes) ----
+    // ---- Quantizers: enabled + notes (name, dac, inScale) ----
     for (int track = 0; track < 4; track++) {
         uint8_t enabled;
-        if (file.read(&enabled, 1) != 1) {
-            file.close();
-            return false;
-        }
+        if (file.read(&enabled, 1) != 1) { file.close(); return false; }
         sequencers[track]->setQuantizerEnabled(enabled != 0);
+
         uint8_t numNotes;
-        if (file.read(&numNotes, 1) != 1) {
-            file.close();
-            return false;
-        }
+        if (file.read(&numNotes, 1) != 1) { file.close(); return false; }
+
         _quantizers[track].clearNotes();
         for (uint8_t i = 0; i < numNotes; i++) {
             char name[5];
-            if (file.read((uint8_t*)name, 4) != 4) {
-                file.close();
-                return false;
-            }
+            if (file.read((uint8_t*)name, 4) != 4) { file.close(); return false; }
             name[4] = '\0';
             uint16_t dac;
-            if (file.read((uint8_t*)&dac, 2) != 2) {
-                file.close();
-                return false;
-            }
+            if (file.read((uint8_t*)&dac, 2) != 2) { file.close(); return false; }
             _quantizers[track].addNote(name, dac);
-            if (version >= 5) {
-                uint8_t inScale;
-                if (file.read(&inScale, 1) != 1) { file.close(); return false; }
-                _quantizers[track].setNoteInScale(i, inScale != 0);
-            }
+
+            uint8_t inScale;
+            if (file.read(&inScale, 1) != 1) { file.close(); return false; }
+            _quantizers[track].setNoteInScale(i, inScale != 0);
         }
     }
 
-    // ---- Read CV ranges (for editing) ----
+    // ---- CV ranges ----
     for (int track = 0; track < NUM_MELODIC_TRACKS; track++) {
         uint16_t minCV, maxCV;
         if (file.read((uint8_t*)&minCV, 2) != 2 ||
-            file.read((uint8_t*)&maxCV, 2) != 2) {
-            file.close();
-            return false;
-        }
+            file.read((uint8_t*)&maxCV, 2) != 2) { file.close(); return false; }
         sequencers[track]->setMinCV(minCV);
         sequencers[track]->setMaxCV(maxCV);
     }
 
-    // ---- Read reset flags ----
+    // ---- Reset flags ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         uint8_t flag;
-        if (file.read(&flag, 1) != 1) {
-            file.close();
-            return false;
-        }
+        if (file.read(&flag, 1) != 1) { file.close(); return false; }
         sequencers[track]->setResetOnStep(flag != 0);
     }
 
-    // ---- Read swing amounts ----
+    // ---- Swing amounts ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         uint8_t swing;
-        if (file.read(&swing, 1) != 1) {
-            file.close();
-            return false;
-        }
+        if (file.read(&swing, 1) != 1) { file.close(); return false; }
         sequencers[track]->setSwingAmount(swing);
     }
 
-    // ---- NEW: Read quantizer range parameters (version 3) ----
-    if (version >= 3) {
-        for (int track = 0; track < 4; track++) {
-            uint16_t startDAC, endDAC;
-            uint8_t numNotes;
-            if (file.read((uint8_t*)&startDAC, 2) != 2 ||
-                file.read((uint8_t*)&endDAC, 2) != 2 ||
-                file.read(&numNotes, 1) != 1) {
-                file.close();
-                return false;
-            }
-            _quantizers[track].setRangeParams(startDAC, endDAC, numNotes);
-        }
+    // ---- Quantizer range params ----
+    for (int track = 0; track < 4; track++) {
+        uint16_t startDAC, endDAC;
+        uint8_t numNotes;
+        if (file.read((uint8_t*)&startDAC, 2) != 2 ||
+            file.read((uint8_t*)&endDAC, 2) != 2 ||
+            file.read(&numNotes, 1) != 1) { file.close(); return false; }
+        _quantizers[track].setRangeParams(startDAC, endDAC, numNotes);
     }
 
-    // ---- Quantizer scale index and root note (version 4) ----
-    if (version >= 4) {
-        for (int track = 0; track < 4; track++) {
-            uint8_t scaleIdx, rootIdx;
-            if (file.read(&scaleIdx, 1) != 1 ||
-                file.read(&rootIdx, 1) != 1) {
-                file.close();
-                return false;
-            }
-            _quantizers[track].setScaleIndex(scaleIdx);
-            _quantizers[track].setRootIndex(rootIdx);
-
-            // v4 stored notes without inScale — reconstruct it from the scale
-            if (version == 4) {
-                const ScalePattern* pat = getScalePattern(scaleIdx);
-                if (pat) {
-                    _quantizers[track].applyScaleIntervals(pat->intervals, pat->numNotes, rootIdx);
-                }
-            }
-        }
-    } else {
-        // v3 and earlier: no scale metadata; leave defaults (Chromatic, c)
-        for (int track = 0; track < 4; track++) {
-            _quantizers[track].setScaleIndex(0);
-            _quantizers[track].setRootIndex(0);
-            // inScale is already true for all notes (addNote default)
-        }
+    // ---- Quantizer scale index and root index ----
+    for (int track = 0; track < 4; track++) {
+        uint8_t scaleIdx, rootIdx;
+        if (file.read(&scaleIdx, 1) != 1 ||
+            file.read(&rootIdx, 1) != 1) { file.close(); return false; }
+        _quantizers[track].setScaleIndex(scaleIdx);
+        _quantizers[track].setRootIndex(rootIdx);
     }
 
     file.close();

@@ -19,11 +19,9 @@ void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t nu
     
     if (numNotes < 2) return;
     
-    uint16_t step = (endDAC - startDAC) / (numNotes - 1);
-    
     for (uint8_t i = 0; i < numNotes; i++) {
         Note note;
-        note.dacValue = startDAC + (i * step);
+        note.dacValue = startDAC + (uint32_t)(endDAC - startDAC) * i / (numNotes - 1);
         note.inScale = true;
         
         uint8_t noteIndex = i % 12;

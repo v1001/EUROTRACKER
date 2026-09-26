@@ -8,10 +8,14 @@
 #include <SPIFFS.h>
 
 
+// Clock pin: input when clock source is external, output when internal
+const uint8_t CLOCK_PIN = 5;
+static volatile bool clockOutputState = false;
+
 // Global instances
 DisplayManager display;
 UserInput userInput(10);
-SyncTimer syncTimer(5);
+SyncTimer syncTimer(CLOCK_PIN);
 OutputHandler outputHandler;
 TrackerApp trackerApp(display, userInput, outputHandler);
 I2CGatekeeper i2cGatekeeper;
@@ -33,12 +37,25 @@ uint64_t getQuarterNoteTime() {
     if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
         return 60000000.0f / trackerApp.getInternalBPMFloat();
     } else {
-        return syncTimer.getBasePeriod();      // time between external pulses (µs)
+        // getBasePeriod() is time between external pulses.
+        // Quarter note period = pulse period × PPQN.
+        uint16_t ppqn = trackerApp.getExternalPPQNValue();
+        return syncTimer.getBasePeriod() * ppqn;
     }
 }
 
 void IRAM_ATTR onTimerTick(uint16_t tickCount) {
     trackerApp.processClockTick(tickCount);
+
+    // Clock output when running from internal clock
+    if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
+        uint16_t ppqn = trackerApp.getExternalPPQNValue();
+        uint8_t toggleEvery = 96 / ppqn;
+        if (toggleEvery > 0 && (tickCount % toggleEvery) == 0) {
+            clockOutputState = !clockOutputState;
+            digitalWrite(CLOCK_PIN, clockOutputState ? HIGH : LOW);
+        }
+    }
 }
 
 void startTimer() {
@@ -46,6 +63,11 @@ void startTimer() {
     if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
         float frequencyHz = trackerApp.getInternalBPMFloat() / 60.0f;
         syncTimer.beginStandalone(192, onTimerTick, frequencyHz);
+
+        // Configure clock pin as output for master mode
+        pinMode(CLOCK_PIN, OUTPUT);
+        clockOutputState = false;
+        digitalWrite(CLOCK_PIN, LOW);
     } else {
         uint16_t ppqn = trackerApp.getExternalPPQNValue();
         syncTimer.begin(192, onTimerTick, ppqn);
@@ -115,7 +137,7 @@ void setup() {
 
     if (!SPIFFS.begin(true)) {
         display.print("Memory Error");
-    }else{
+    } else {
         trackerApp.begin(resetRequested);
         startTimer();
 

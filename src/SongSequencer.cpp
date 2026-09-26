@@ -7,7 +7,7 @@ SongSequencer::SongSequencer(DisplayManager& display, UserInput& userInput, Outp
       _songUI(display, userInput, _songData),_sequencerModeActive(false), _lastSaveTime(0),
       _songState(STATE_STOP), _currentPlayStep(0), _currentStepTickCounter(0), _stepTicksRemaining(0),
       _pendingStart(false), _pendingSequencer(false), _nextPlayStep(0), _openSequencerTrack(0),
-      _gateQueues{}, _cvQueues{} {;
+      _gateQueues{}, _cvQueues{}, _lastDACValues{0, 0, 0, 0} {;
     
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = nullptr;
@@ -161,7 +161,7 @@ StepSequencer* SongSequencer::getSequencer(int track) {
 
 void SongSequencer::processClockTick(uint16_t tickCount) {
     // Handle pending start (synchronized to next clock tick)
-    if (_pendingStart && ( tickCount % 48 == 0 || !_syncStart)) {
+    if (_pendingStart && ( tickCount == 0 || !_syncStart)) {
         _pendingStart = false;
         _songState = STATE_PLAY_SONG;
         _currentStepTickCounter = 0;
@@ -198,25 +198,23 @@ void SongSequencer::processClockTick(uint16_t tickCount) {
 }
 
 void SongSequencer::processOutputs() {
-    static uint16_t lastDACValues[4] = {0, 0, 0, 0};
-    
     for (int i = 0; i < NUM_TRACKS; i++) {
         if (_sequencers[i]) {
             if (_sequencers[i]->hasStepPending()) {
                 _sequencers[i]->onStep();
             }
             _sequencers[i]->processStepOutput();
-            
+
             if (_sequencers[i]->isGateOutputChanged()) {
                 _outputHandler.setDigitalOutput(i, _sequencers[i]->getCurrentGateOutput());
                 _sequencers[i]->clearGateOutputChanged();
             }
-            
-            if (i < 4) {
+
+            if (i < 4 && _songState != STATE_STOP) {
                 uint16_t currentDACValue = _sequencers[i]->getCurrentDACValue();
-                if (currentDACValue != lastDACValues[i]) {
+                if (currentDACValue != _lastDACValues[i]) {
                     _outputHandler.setDACChannel(i, currentDACValue);
-                    lastDACValues[i] = currentDACValue;
+                    _lastDACValues[i] = currentDACValue;
                 }
             }
         }
@@ -362,4 +360,15 @@ void SongSequencer::newCurrentProject() {
     saveCurrentProject();
     _songUI.clearSaveFlag();
     _songUI.resetCursor();
+}
+
+void SongSequencer::markProjectDirty() {
+    _songUI.setSaveFlag();
+}
+
+void SongSequencer::previewDAC(int track, uint16_t value) {
+    if (track < 0 || track >= 4) return;
+    if (_songState != STATE_STOP) return;
+    _outputHandler.setDACChannel(track, value);
+    _lastDACValues[track] = value;
 }

@@ -256,6 +256,7 @@ void TrackMenu::handleEditing() {
                         if (_editValue > seq->getMaxCV() - 100) _editValue = seq->getMaxCV() - 100;
                     }
                     applySetting();
+                    _songSequencer.previewDAC(_track, _editValue);
                     break;
                 case MENU_CV_RANGE_HIGH:
                     if (quantized) {
@@ -286,6 +287,7 @@ void TrackMenu::handleEditing() {
                         if (_editValue < seq->getMinCV() + 100) _editValue = seq->getMinCV() + 100;
                     }
                     applySetting();
+                    _songSequencer.previewDAC(_track, _editValue);
                     break;
                 case MENU_SWING:
                     if (encAChanged) _editValue += deltaA * 10;
@@ -471,6 +473,7 @@ void TrackMenu::drawSubMenu() {
 
 void TrackMenu::saveAndExit() {
     applySetting();
+    _songSequencer.markProjectDirty();
     _exitRequested = true;
 }
 

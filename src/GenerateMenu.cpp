@@ -68,24 +68,35 @@ void GenerateMenu::handleEditing() {
 
         // Only editable items (Min CV, Max CV, Num Notes)
         switch (_selectedIndex) {
-            case ITEM_MIN_CV:
-                if (encAChanged) _minCV += deltaA * 50;
-                if (encBChanged) _minCV += deltaB;
-                if (_minCV > _maxCV - 1) _minCV = _maxCV - 1;
-                if (_minCV > 4095) _minCV = 4095;
+            case ITEM_MIN_CV: {
+                int newVal = _minCV;
+                if (encAChanged) newVal += deltaA * 50;
+                if (encBChanged) newVal += deltaB;
+                if (newVal < 0) newVal = 0;
+                if (newVal > (int)_maxCV - 1) newVal = (int)_maxCV - 1;
+                _minCV = (uint16_t)newVal;
+                _songSequencer.previewDAC(_track, _minCV);
                 break;
-            case ITEM_MAX_CV:
-                if (encAChanged) _maxCV += deltaA * 50;
-                if (encBChanged) _maxCV += deltaB;
-                if (_maxCV < _minCV + 1) _maxCV = _minCV + 1;
-                if (_maxCV > 4095) _maxCV = 4095;
+            }
+            case ITEM_MAX_CV: {
+                int newVal = _maxCV;
+                if (encAChanged) newVal += deltaA * 50;
+                if (encBChanged) newVal += deltaB;
+                if (newVal > 4095) newVal = 4095;
+                if (newVal < (int)_minCV + 1) newVal = (int)_minCV + 1;
+                _maxCV = (uint16_t)newVal;
+                _songSequencer.previewDAC(_track, _maxCV);
                 break;
-            case ITEM_NUM_NOTES:
-                if (encAChanged) _numNotes += deltaA * 2;
-                if (encBChanged) _numNotes += deltaB;
-                if (_numNotes < 2) _numNotes = 2;
-                if (_numNotes > 128) _numNotes = 128;
+            }
+            case ITEM_NUM_NOTES: {
+                int newVal = _numNotes;
+                if (encAChanged) newVal += deltaA * 2;
+                if (encBChanged) newVal += deltaB;
+                if (newVal < 2) newVal = 2;
+                if (newVal > 128) newVal = 128;
+                _numNotes = (uint8_t)newVal;
                 break;
+            }
         }
 
         _lastEncPosA = encPosA;
