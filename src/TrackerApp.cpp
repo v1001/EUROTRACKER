@@ -64,7 +64,7 @@ void TrackerApp::begin(bool reset) {
     
     // Initialize menu instances
     _mainMenu = new MainMenu(_display, _userInput, _outputHandler, this);
-    _patternMenu = new PatternMenu(_display, _userInput, _songSequencer.getSongData());
+    _patternMenu = new PatternMenu(_display, _userInput, _songSequencer);
     _trackMenu = new TrackMenu(_display, _userInput, _songSequencer);
 }
 
@@ -132,8 +132,7 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
     
     // Sequencer UI -> Pattern Menu (long press joystick, only when not playing)
     if (_currentUIState == STATE_SEQUENCER_UI && 
-        _userInput.joystick_button.press_duration > 500 && 
-        _songSequencer.getSongState() == SongSequencer::STATE_STOP) {
+        _userInput.joystick_button.press_duration > 500) {
         _lastStateTransitionTime = now;
         _currentUIState = STATE_PATTERN_MENU;
         if (_patternMenu && _sequencer) {
@@ -201,8 +200,7 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
 
     // Song UI -> Track Menu (long press encoder A, 3 seconds, playback stopped)
     if (_currentUIState == STATE_SONG_UI &&
-        _userInput.encoder_a_button.press_duration > 500 &&
-        _songSequencer.getSongState() == SongSequencer::STATE_STOP) {
+        _userInput.encoder_a_button.press_duration > 500) {
         _currentUIState = STATE_TRACK_MENU;
         static_cast<TrackMenu*>(_trackMenu)->enter(_songSequencer.getSelectedTrack());
         return;
