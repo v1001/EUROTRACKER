@@ -32,6 +32,9 @@ public:
     bool getCurrentGateOutput() const { return _currentGateOutput; }
     bool isGateOutputChanged() const { return _gateOutputChanged; }
     void clearGateOutputChanged() { _gateOutputChanged = false; }
+
+    uint64_t getStepDurationUs() const { return _stepDurationUs; }
+    uint16_t getGateDurationMs(uint8_t gatePercent) const;
     
     bool hasStepPending() const { return _stepPending; }
     
@@ -79,7 +82,7 @@ private:
     long _lastEncBPos;
     
     void renderToDisplay();
-    uint64_t calculateDurationUs(uint8_t gatePercent);
+    uint64_t calculateDurationUs(uint8_t gatePercent) const;
     uint8_t constrainValue(int value);
 
     // Quantizer

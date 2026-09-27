@@ -52,7 +52,7 @@ uint8_t StepSequencer::constrainValue(int value) {
     return (uint8_t)value;
 }
 
-uint64_t StepSequencer::calculateDurationUs(uint8_t gatePercent) {
+uint64_t StepSequencer::calculateDurationUs(uint8_t gatePercent) const {
     const uint64_t MIN_GATE = 120;
     uint64_t halfStep = _stepDurationUs / 2;
 
@@ -62,6 +62,10 @@ uint64_t StepSequencer::calculateDurationUs(uint8_t gatePercent) {
     if (gatePercent == 97) return 128 * halfStep;
     if (gatePercent == 98) return 256 * halfStep;
     return 512 * halfStep;
+}
+
+uint16_t StepSequencer::getGateDurationMs(uint8_t gatePercent) const {
+    return (uint16_t)(calculateDurationUs(gatePercent) / 1000);
 }
 
 uint16_t StepSequencer::getCurrentDACValue() {

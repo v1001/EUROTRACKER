@@ -4,12 +4,11 @@
 StepSequencerUI::StepSequencerUI(DisplayManager& display, UserInput& userInput)
     : _display(display), _userInput(userInput), _pattern(nullptr), _sequencer(nullptr),
       _selectedStep(0), _currentStep(0), _displayMode(0), _editModeEncA(0), _editModeEncB(0),
-      _cursorVisible(true),
-      _lastCursorBlink(0), _lastMoveTime(0), _lastNavTime(0), _lastJoystickMoveTime(0),
-      _joystickWasCentered(true), _lastEncoderAPos(0), _lastEncoderBPos(0),
-      _lastEncoderAMove(0), _lastEncoderBMove(0),
-      _quantizer(nullptr), _quantizerEnabled(false),
-      _copiedStep{false, 0, 0, 0, 0, 0, 0, 0, false}, _copyTriggered(false) {
+      _cursorVisible(true), _lastCursorBlink(0), _lastMoveTime(0), _lastNavTime(0),
+      _lastJoystickMoveTime(0), _joystickWasCentered(true), _lastEncoderAPos(0), _lastEncoderBPos(0),
+      _lastEncoderAMove(0), _lastEncoderBMove(0), _quantizer(nullptr), _quantizerEnabled(false),
+      _copiedStep{false, 0, 0, 0, 0, 0, 0, 0, false}, _copyTriggered(false),
+      _popupActive(false), _popupParam(0), _popupValue(0), _popupLastEdit(0) {
 }
 
 StepSequencerUI::~StepSequencerUI() {
@@ -36,6 +35,13 @@ void StepSequencerUI::draw() {
         getStepPosition(i, x, y);
         drawStep(i, x, y);
     }
+
+    if (_popupActive && (millis() - _popupLastEdit) < 500) {
+        drawPopup();
+    } else {
+        _popupActive = false;
+    }
+
     drawStatusBar();
 }
 
@@ -192,32 +198,30 @@ void StepSequencerUI::handleJoystick() {
 
 void StepSequencerUI::handleEncoders() {
     uint64_t now = millis();
-    
+
     long encAPos = _userInput.encoder_a.position;
     if (encAPos != _lastEncoderAPos) {
         int change = (encAPos > _lastEncoderAPos) ? 1 : -1;
-        
+
         if (change != 0) {
             if (_editModeEncA == 0) { // CV editing
-            
+
                 uint16_t raw = _pattern->getCV(_selectedStep);
                 uint16_t minCV = _sequencer->getMinCV();
                 uint16_t maxCV = _sequencer->getMaxCV();
 
-                // Clamp
                 uint16_t clamped = raw;
                 if (clamped < minCV) clamped = minCV;
                 if (clamped > maxCV) clamped = maxCV;
-                // Check for valid note index
+
                 uint8_t currentIdx = 0xFF;
                 if (_quantizerEnabled && _quantizer) {
                     currentIdx = _quantizer->getNoteIndex(clamped);
                 }
+
                 if (currentIdx != 0xFF) {
-                    // Reachable bounds
                     uint8_t qMinIdx = _quantizer->getNoteIndex(minCV);
                     uint8_t qMaxIdx = _quantizer->getNoteIndex(maxCV);
-                    // Both are valid since currentIdx != 0xFF
                     int newIdx = currentIdx;
                     if (change > 0) {
                         for (int i = currentIdx + 1; i <= (int)qMaxIdx; i++) {
@@ -230,7 +234,6 @@ void StepSequencerUI::handleEncoders() {
                     }
                     _pattern->setCV(_selectedStep, _quantizer->getNoteDAC((uint8_t)newIdx));
                 } else {
-                    // Unquantized
                     uint16_t step = (maxCV - minCV) / 100;
                     if (step == 0) step = 1;
                     int newRaw = raw + change * step;
@@ -239,41 +242,53 @@ void StepSequencerUI::handleEncoders() {
                     _pattern->setCV(_selectedStep, (uint16_t)newRaw);
                 }
                 _displayMode = 0;
+                setPopup(0, _pattern->getCV(_selectedStep));
+
             } else if (_editModeEncA == 1) {
                 int newValue = _pattern->getDecay(_selectedStep) + change;
                 _pattern->setDecay(_selectedStep, constrainValue(newValue));
                 _displayMode = 2;
+                setPopup(2, _pattern->getDecay(_selectedStep));
+
             } else if (_editModeEncA == 2) {
                 int newValue = _pattern->getAttack(_selectedStep) + change;
                 _pattern->setAttack(_selectedStep, constrainValue(newValue));
                 _displayMode = 4;
+                setPopup(4, _pattern->getAttack(_selectedStep));
             }
         }
         _lastEncoderAPos = encAPos;
         _lastEncoderAMove = now;
     }
-    
+
     long encBPos = _userInput.encoder_b.position;
     if (encBPos != _lastEncoderBPos) {
         int change = (encBPos > _lastEncoderBPos) ? 1 : -1;
-        
+
         if (change != 0) {
             if (_editModeEncB == 0) {
                 int newValue = _pattern->getProbability(_selectedStep) + change;
                 _pattern->setProbability(_selectedStep, constrainValue(newValue));
                 _displayMode = 1;
+                setPopup(1, _pattern->getProbability(_selectedStep));
+
             } else if (_editModeEncB == 1) {
                 int newValue = _pattern->getGateLength(_selectedStep) + change;
                 _pattern->setGateLength(_selectedStep, constrainValue(newValue));
                 _displayMode = 3;
+                setPopup(3, _pattern->getGateLength(_selectedStep));
+
             } else if (_editModeEncB == 2) {
                 int newValue = _pattern->getRatchet(_selectedStep) + change;
                 _pattern->setRatchet(_selectedStep, constrainValue(newValue));
                 _displayMode = 5;
+                setPopup(5, _pattern->getRatchet(_selectedStep));
+
             } else if (_editModeEncB == 3) {
                 int newValue = _pattern->getMicrotiming(_selectedStep) + change;
                 _pattern->setMicrotiming(_selectedStep, constrainValue(newValue));
                 _displayMode = 7;
+                setPopup(7, _pattern->getMicrotiming(_selectedStep));
             }
         }
         _lastEncoderBPos = encBPos;
@@ -412,4 +427,102 @@ const char* StepSequencerUI::getQuantizedNoteNameOrCV(uint16_t cvValue) {
         return buffer;
     }
     return _quantizer->getNoteName(noteIndex);
+}
+
+void StepSequencerUI::setPopup(uint8_t param, uint16_t value) {
+    _popupActive = true;
+    _popupParam = param;
+    _popupValue = value;
+    _popupLastEdit = millis();
+}
+
+void StepSequencerUI::drawPopup() {
+    const int BOX_X = 2;
+    const int BOX_Y = 6;
+    const int BOX_W = 124;
+    const int BOX_H = 46;
+
+    _display.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H, _display.colorWhite());
+    _display.setTextColor(_display.colorBlack());
+
+    char header[24] = "";
+    char value[12]  = "";
+    char line1[16]  = "";
+    char line2[16]  = "";
+
+    // Header: "STEP N <label>"
+    switch (_popupParam) {
+        case 0: {
+            const char* name = (_quantizerEnabled && _quantizer) ? "NOTE" : "CV";
+            snprintf(header, sizeof(header), "STEP %d %s", _selectedStep + 1, name);
+            break;
+        }
+        case 1: snprintf(header, sizeof(header), "STEP %d PROBABILITY", _selectedStep + 1); break;
+        case 2: snprintf(header, sizeof(header), "STEP %d DECAY",       _selectedStep + 1); break;
+        case 3: snprintf(header, sizeof(header), "STEP %d GATE TIME",   _selectedStep + 1); break;
+        case 4: snprintf(header, sizeof(header), "STEP %d ATTACK",      _selectedStep + 1); break;
+        case 5: snprintf(header, sizeof(header), "STEP %d RATCHET",     _selectedStep + 1); break;
+        case 7: snprintf(header, sizeof(header), "STEP %d MICROTIMING", _selectedStep + 1); break;
+        default: return;
+    }
+
+    // Value and unit lines
+    switch (_popupParam) {
+        case 0: {
+            if (_quantizerEnabled && _quantizer) {
+                uint8_t idx = _quantizer->getNoteIndex(_popupValue);
+                if (idx != 0xFF) {
+                    snprintf(value, sizeof(value), "%s", _quantizer->getNoteName(idx));
+                } else {
+                    snprintf(value, sizeof(value), "--");
+                }
+            } else {
+                uint8_t pct = mapRawToPercent(_popupValue);
+                snprintf(value, sizeof(value), "%02d%%", pct);
+            }
+            snprintf(line1, sizeof(line1), "DAC %d", _popupValue);
+            float volts = _popupValue * 5.0f / 4095.0f;
+            snprintf(line2, sizeof(line2), "%.2f V", volts);
+            break;
+        }
+        case 1:
+            snprintf(value, sizeof(value), "%02d%%", _popupValue);
+            break;
+        case 2:
+        case 4:
+            snprintf(value, sizeof(value), "%02d%%", _popupValue);
+            if (_sequencer) {
+                snprintf(line1, sizeof(line1), "%u ms",
+                         _sequencer->getGateDurationMs((uint8_t)_popupValue));
+            }
+            break;
+        case 3:
+            snprintf(value, sizeof(value), "%02d%%", _popupValue);
+            if (_sequencer) {
+                snprintf(line1, sizeof(line1), "%u ms",
+                         _sequencer->getGateDurationMs((uint8_t)_popupValue));
+            }
+            break;
+        case 5:
+            snprintf(value, sizeof(value), "%d", _popupValue);
+            break;
+        case 7:
+            snprintf(value, sizeof(value), "%02d%%", _popupValue);
+            break;
+        default:
+            return;
+    }
+
+    _display.setTextSize(TEXT_SMALL);
+    _display.printCentered(header, BOX_Y + 2);
+
+    _display.setTextSize(TEXT_MEDIUM);
+    _display.printCentered(value, BOX_Y + 12);
+
+    _display.setTextSize(TEXT_SMALL);
+    if (line1[0] != '\0') _display.printCentered(line1, BOX_Y + 30);
+    if (line2[0] != '\0') _display.printCentered(line2, BOX_Y + 38);
+
+    _display.setTextColor(_display.colorWhite());
+    _display.setTextSize(TEXT_SMALL);
 }
