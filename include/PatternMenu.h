@@ -5,10 +5,11 @@
 #include "UserInput.h"
 #include "SongData.h"
 #include "StepSequencer.h"
+#include "SongSequencer.h"
 
 class PatternMenu {
 public:
-    PatternMenu(DisplayManager& display, UserInput& userInput, SongData& songData);
+    PatternMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer);
     ~PatternMenu();
     
     void enter(int track, int step, StepSequencer* sequencer);
@@ -31,6 +32,7 @@ private:
     
     DisplayManager& _display;
     UserInput& _userInput;
+    SongSequencer& _songSequencer;
     SongData& _songData;
     
     int _track;

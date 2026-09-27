@@ -258,9 +258,9 @@ void IRAM_ATTR SyncTimer::onTimerTick() {
                                ?  (int32_t)dt_prev
                                : -(int32_t)dt_next;
 
-                // Proportional correction; converge over ~8 wraps.
+                // Proportional correction; converge over ~3 wraps.
                 // Accumulator is in 1/256 µs units to avoid integer dead-band.
-                int32_t desired_256 = (err_us * 256) / (192 * 8);
+                int32_t desired_256 = (err_us * 256) / (192 * 3);
                 _instance->_wrap_corr_accum += desired_256;
 
                 int32_t int_part = _instance->_wrap_corr_accum / 256;

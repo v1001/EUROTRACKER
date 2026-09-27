@@ -1,7 +1,8 @@
 #include "PatternMenu.h"
 
-PatternMenu::PatternMenu(DisplayManager& display, UserInput& userInput, SongData& songData)
-    : _display(display), _userInput(userInput), _songData(songData),
+PatternMenu::PatternMenu(DisplayManager& display, UserInput& userInput, SongSequencer& songSequencer)
+    : _display(display), _userInput(userInput), _songSequencer(songSequencer),
+      _songData(songSequencer.getSongData()),
       _track(0), _step(0), _sequencer(nullptr), _selectedIndex(0),
       _editValue(0), _tempDivider(0), _tempLength(0), _tempTranspose(0),
       _exitRequested(false), _saveOnExit(true),
@@ -94,6 +95,7 @@ void PatternMenu::handleEditing() {
             break;
             
         case MENU_LENGTH:
+            if (_songSequencer.getSongState() != SongSequencer::STATE_STOP) break;
             _editValue += delta;
             if (_editValue < 1) _editValue = 1;
             if (_editValue > 32) _editValue = 32;
@@ -133,6 +135,7 @@ void PatternMenu::saveAndExit() {
     // Called by TrackerApp when the physical save button is pressed.
     // Uses the current _saveOnExit flag (set by last highlighted exit item, or default true)
     applyChanges();
+    _songSequencer.markProjectDirty();
 }
 
 void PatternMenu::applyChanges() {

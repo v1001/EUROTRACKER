@@ -67,8 +67,10 @@ void QuantizerMainMenu::handleEditing() {
                 applySetting();
                 break;
             case ITEM_GENERATE:
-                _openGenerate = true;
-                _exitRequested = true;  // exit main menu to go to generate submenu
+                if (_songSequencer.getSongState() == SongSequencer::STATE_STOP) {
+                    _openGenerate = true;
+                    _exitRequested = true;  // exit main menu to go to generate submenu
+                }
                 break;
             case ITEM_NOTES:
                 _openNotes = true;

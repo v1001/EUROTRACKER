@@ -108,6 +108,15 @@ private:
     const char* getQuantizedNoteNameOrCV(uint16_t cvValue);
 
     void resetEncoderTracking();
+
+    // Pop-up overlay
+    bool     _popupActive;
+    uint8_t  _popupParam;
+    uint16_t _popupValue;
+    uint64_t _popupLastEdit;
+
+    void drawPopup();
+    void setPopup(uint8_t param, uint16_t value);
 };
 
 #endif
