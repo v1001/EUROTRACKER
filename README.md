@@ -30,7 +30,7 @@ Six tracks of CV/gate sequencing with a tracker-style workflow, real-time quanti
 - Sync start, autoplay
 
 **Storage**
-- SPIFFS project storage
+- LittleFS project storage
 - 8 save slots
 - Auto-save every 15 seconds when idle
 
