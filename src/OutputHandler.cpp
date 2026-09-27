@@ -42,7 +42,7 @@ void OutputHandler::setDACChannel(uint8_t channel, uint16_t value) {
 }
 
 void OutputHandler::setDACChannelVoltage(uint8_t channel, float voltage) {
-    uint16_t value = (uint16_t)((voltage * 4095.0f) / 3.3f);
+    uint16_t value = (uint16_t)((voltage * 4095.0f) / 5.0f);
     setDACChannel(channel, value);
 }
 
@@ -51,6 +51,6 @@ uint16_t OutputHandler::getDACChannelValue(uint8_t channel) {
 }
 
 float OutputHandler::getDACChannelVoltage(uint8_t channel) {
-    float v = (getDACChannelValue(channel) * 3.3f) / 4095.0f;
+    float v = (getDACChannelValue(channel) * 5.0f) / 4095.0f;
     return v;
 }

@@ -6,7 +6,7 @@
 TrackerApp::TrackerApp(DisplayManager& display, UserInput& userInput, OutputHandler& outputHandler)
     : _display(display), _userInput(userInput), _outputHandler(outputHandler),
       _songSequencer(display, userInput, outputHandler), _currentUIState(STATE_SONG_UI),
-      _sequencer(nullptr), _editingTrack(0), _editingStep(0),
+      _sequencer(nullptr), _editingTrack(0), _editingStep(0), _lastStateTransitionTime(0),
       _mainMenu(nullptr), _patternMenu(nullptr), _quarterNoteTimeUs(0) {
 }
 
@@ -318,11 +318,11 @@ bool TrackerApp::songExists(const char* filename){
     return _songSequencer.fileExists(filename);
 }
 
-int TrackerApp::getSongLength(){
+uint32_t TrackerApp::getSongLength(){
     return _songSequencer.getSongData().getLength();
 }
 
-void TrackerApp::setSongLength(int length) {
+void TrackerApp::setSongLength(uint32_t length) {
     _songSequencer.getSongData().setLength(length);
 }
 

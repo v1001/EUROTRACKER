@@ -61,8 +61,8 @@ public:
     // SongSequencer access for menus
     SongSequencer& getSongSequencer() { return _songSequencer; }
 
-    int getSongLength();
-    void setSongLength(int length);
+    uint32_t getSongLength();
+    void setSongLength(uint32_t length);
 
 private:
 

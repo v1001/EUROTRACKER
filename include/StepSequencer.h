@@ -68,6 +68,12 @@ private:
     uint64_t _stepDurationUs;
     uint64_t _lastStepTime;
     uint64_t _lastTickTime;
+
+    // Interpolation anchor for CV_SMOOTH events: value/timestamp of the last
+    // event actually executed by processStepOutput(). Promoted from function
+    // locals (which were `static` and therefore shared by all 6 tracks).
+    uint16_t _lastCVEventValue;
+    uint64_t _lastCVEventTimestamp;
     
     volatile bool _stepPending;
     

@@ -423,7 +423,7 @@ bool SongData::exists(const char* filename) {
 // ----------------------------------------------------------------------
 // Getters / Setters (all methods used elsewhere)
 // ----------------------------------------------------------------------
-void SongData::setLength(int length) {
+void SongData::setLength(uint32_t length) {
     if (length >= 1 && length <= MAX_SONG_LENGTH) {
         _length = length;
     }

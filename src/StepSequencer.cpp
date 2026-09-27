@@ -6,7 +6,8 @@ StepSequencer::StepSequencer(DisplayManager& display, UserInput& userInput)
       _stepPending(false), _currentDACValue(0), _currentGateOutput(false), _gateOutputChanged(false),
       _lastEncoderAMove(0), _lastEncoderBMove(0), _lastEncAPos(0), _lastEncBPos(0),
       _quantizerEnabled(true), _minCV(0), _maxCV(4095), _quantizer(nullptr), _lastTickTime(0),
-      _gateQueue(nullptr), _cvQueue(nullptr), _resetOnStep(true), _swingAmount(0) {
+      _gateQueue(nullptr), _cvQueue(nullptr), _resetOnStep(true), _swingAmount(0),
+      _lastCVEventValue(0), _lastCVEventTimestamp(0) {
 }
 
 StepSequencer::~StepSequencer() {
@@ -23,6 +24,8 @@ void StepSequencer::setQuantizerEnabled(bool enabled) {
 
 void StepSequencer::resetPosition() {
     _currentStep = 0;
+    _lastCVEventValue = 0;
+    _lastCVEventTimestamp = 0;
 }
 
 void StepSequencer::update() {
@@ -231,8 +234,6 @@ void StepSequencer::onStep() {
 
 void StepSequencer::processStepOutput() {
     uint64_t now = micros();
-    static uint16_t lastValue = 0;
-    static uint64_t lastTimestamp = 0;
     
     // ===== GATE OUTPUT =====
     if (_gateQueue) {
@@ -254,8 +255,8 @@ void StepSequencer::processStepOutput() {
         while (!_cvQueue->isEmpty() && _cvQueue->peek().timestamp <= now) {
             const CVEvent& event = _cvQueue->peek();
             _currentDACValue = event.value;
-            lastValue = event.value;
-            lastTimestamp = now;
+            _lastCVEventValue = event.value;
+            _lastCVEventTimestamp = now;
             _cvQueue->pop();
         }
         
@@ -263,14 +264,14 @@ void StepSequencer::processStepOutput() {
             const CVEvent& nextEvent = _cvQueue->peek();
             
             if (nextEvent.transitionMode == CVEvent::CV_SMOOTH && nextEvent.timestamp > now) {
-                if (lastTimestamp > 0 && lastTimestamp < nextEvent.timestamp) {
-                    uint64_t totalDuration = nextEvent.timestamp - lastTimestamp;
-                    uint64_t elapsed = now - lastTimestamp;
+                if (_lastCVEventTimestamp > 0 && _lastCVEventTimestamp < nextEvent.timestamp) {
+                    uint64_t totalDuration = nextEvent.timestamp - _lastCVEventTimestamp;
+                    uint64_t elapsed = now - _lastCVEventTimestamp;
                     
                     if (elapsed < totalDuration) {
                         float progress = (float)elapsed / (float)totalDuration;
-                        uint16_t interpolatedValue = lastValue + 
-                            (uint16_t)(progress * (nextEvent.value - lastValue));
+                        uint16_t interpolatedValue = _lastCVEventValue + 
+                            (uint16_t)(progress * (nextEvent.value - _lastCVEventValue));
                         
                         if (interpolatedValue != _currentDACValue) {
                             _currentDACValue = interpolatedValue;

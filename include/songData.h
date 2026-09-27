@@ -16,8 +16,8 @@ public:
     static const uint8_t FILE_VERSION = 5;
 
     // Constants
-    static const int MAX_SONG_LENGTH = 64;
-    static const int DEFAULT_SONG_LENGTH = 4;
+    static const uint32_t MAX_SONG_LENGTH = 64;
+    static const uint32_t DEFAULT_SONG_LENGTH = 4;
     static const int NUM_TRACKS = 6;
     static const int PATTERN_STEPS = 32;
     
@@ -41,7 +41,7 @@ public:
     bool exists(const char* filename);
     
     // Getters
-    int getLength() const { return _length; }
+    uint32_t getLength() const { return _length; }
     StepPattern& getPattern(int track, int step) { return _patterns[track][step]; }
     const StepPattern& getPattern(int track, int step) const { return _patterns[track][step]; }
     uint8_t getDividerIndex(int track, int step) const { return _dividerIndices[track][step]; }
@@ -49,7 +49,7 @@ public:
     uint16_t getDividerValue(int track, int step) const { return _dividers[_dividerIndices[track][step]].value; }
     
     // Setters
-    void setLength(int length);
+    void setLength(uint32_t length);
     void setDividerIndex(int track, int step, uint8_t index);
     
     // Pattern operations
@@ -84,7 +84,7 @@ private:
     
     StepPattern _patterns[NUM_TRACKS][MAX_SONG_LENGTH];
     uint8_t _dividerIndices[NUM_TRACKS][MAX_SONG_LENGTH];
-    int _length;
+    uint32_t _length;
     
     // Copy/Paste buffers
     StepPattern _copiedPattern;

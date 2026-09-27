@@ -231,10 +231,6 @@ void MainMenu::handleEditing() {
             _pendingSlot = _loadSlot;
             _pendingNewSong = false;   // clear any stale new song flag
             _showWarning = true;
-        } else if (_selectedIndex == MENU_LOAD_SONG) {
-            _pendingIsSave = false;
-            _pendingSlot = _loadSlot;
-            _showWarning = true;
         } else if (_selectedIndex == MENU_SAVE_AND_EXIT) {
             GlobalSettings::save();
             _exitRequested = true;

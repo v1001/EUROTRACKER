@@ -97,10 +97,7 @@ void NotesMenu::handleEditing() {
 
             if ((uint16_t)newVal != current) {
                 quantizer.setNoteDAC(_selectedIndex, (uint16_t)newVal);
-                if ((uint16_t)newVal != current) {
-                    quantizer.setNoteDAC(_selectedIndex, (uint16_t)newVal);
-                    _songSequencer.previewDAC(_track, (uint16_t)newVal);
-                }
+                _songSequencer.previewDAC(_track, (uint16_t)newVal);
             }
         }
         _lastEncPosA = encPosA;
