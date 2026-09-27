@@ -23,13 +23,13 @@ void GlobalSettings::setDefaults() {
 
 void GlobalSettings::load() {
     // SPIFFS is expected to be already mounted by setup()
-    if (!SPIFFS.exists(SETTINGS_FILE)) {
+    if (!LittleFS.exists(SETTINGS_FILE)) {
         setDefaults();
         save();  // create file with defaults
         return;
     }
     
-    File file = SPIFFS.open(SETTINGS_FILE, FILE_READ);
+    File file = LittleFS.open(SETTINGS_FILE, FILE_READ);
     if (!file) {
         setDefaults();
         return;
@@ -73,7 +73,7 @@ void GlobalSettings::save() {
     data.joystickSpeed = joystickSpeed;
     data.brightness = brightness;
     
-    File file = SPIFFS.open(SETTINGS_FILE, FILE_WRITE);
+    File file = LittleFS.open(SETTINGS_FILE, FILE_WRITE);
     if (file) {
         file.write((uint8_t*)&data, sizeof(data));
         file.close();

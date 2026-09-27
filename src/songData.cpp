@@ -1,5 +1,51 @@
 #include "SongData.h"
-#include <SPIFFS.h>
+#include <cstring>
+
+namespace {
+
+class BufferedWriter {
+public:
+    explicit BufferedWriter(File& file) : _file(file) {}
+
+    void put(const void* data, size_t len) {
+        if (!_ok) return;
+        const uint8_t* p = static_cast<const uint8_t*>(data);
+        while (len > 0) {
+            size_t space = BUFFER_SIZE - _used;
+            size_t chunk = (len < space) ? len : space;
+            memcpy(_buf + _used, p, chunk);
+            _used += chunk;
+            p += chunk;
+            len -= chunk;
+            if (_used == BUFFER_SIZE) flush();
+        }
+    }
+
+    template <typename T>
+    void put(const T& value) {
+        put(&value, sizeof(T));
+    }
+
+    void flush() {
+        if (_used == 0 || !_ok) return;
+        if (_file.write(_buf, _used) != _used) _ok = false;
+        _used = 0;
+    }
+
+    bool finish() {
+        flush();
+        return _ok;
+    }
+
+private:
+    static const size_t BUFFER_SIZE = 512;
+    File& _file;
+    uint8_t _buf[BUFFER_SIZE];
+    size_t _used = 0;
+    bool _ok = true;
+};
+
+} // namespace
 
 const SongData::Divider SongData::_dividers[NUM_DIVIDERS] = {
     {"x4", 12},     // 0
@@ -61,9 +107,9 @@ void SongData::clear() {
 // File operations (streaming, version 5)
 // ----------------------------------------------------------------------
 bool SongData::load(const char* filename, StepSequencer** sequencers) {
-    if (!SPIFFS.exists(filename)) return false;
+    if (!LittleFS.exists(filename)) return false;
 
-    File file = SPIFFS.open(filename, FILE_READ);
+    File file = LittleFS.open(filename, FILE_READ);
     if (!file) return false;
 
     // ---- Header ----
@@ -201,208 +247,135 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
 }
 
 bool SongData::save(const char* filename, StepSequencer** sequencers) {
-    // Calculate required size (version 3: added 4 tracks * (2+2+1) bytes)
+    // Size check (unchanged logic, now against LittleFS)
     size_t needed = 0;
-    needed += 4 + 1 + 3;                     // magic + version + reserved
+    needed += 4 + 1 + 3;
     needed += sizeof(_length);
-    needed += _length * NUM_TRACKS;           // dividers
-    needed += _length * NUM_TRACKS * PATTERN_STEPS * (2 + 1 + 1 + 1 + 1 + 1 + 1 + 1); // cv + flags + 6 others = 9
-    needed += _length * NUM_TRACKS;           // pattern lengths
+    needed += _length * NUM_TRACKS;
+    needed += _length * NUM_TRACKS * PATTERN_STEPS * (2 + 1 + 1 + 1 + 1 + 1 + 1 + 1);
+    needed += _length * NUM_TRACKS;
     for (int track = 0; track < 4; track++) {
-        needed += 1 + 1 + _quantizers[track].getNumNotes() * (4 + 2 + 1); // enabled + numNotes + notes (4-byte name + 2-byte DAC + 1-byte inScale)
+        needed += 1 + 1 + _quantizers[track].getNumNotes() * (4 + 2 + 1);
     }
-    needed += 4 * 4;                          // CV ranges (min/max)
-    needed += NUM_TRACKS;                     // reset flags
-    needed += NUM_TRACKS;                     // swing amounts
-    needed += 4 * (2 + 2 + 1);                // quantizer range parameters per track
-    needed += 4 * 2;                          // scale index + root index per track
+    needed += 4 * 4;
+    needed += NUM_TRACKS;
+    needed += NUM_TRACKS;
+    needed += 4 * (2 + 2 + 1);
+    needed += 4 * 2;
 
-    size_t total = SPIFFS.totalBytes();
-    size_t used = SPIFFS.usedBytes();
-    size_t free = total - used;
-    if (free < needed + 1024) {               // leave 1KB margin
-        return false;
-    }
+    size_t total = LittleFS.totalBytes();
+    size_t used  = LittleFS.usedBytes();
+    size_t free  = total - used;
+    if (free < needed + 1024) return false;
 
-    File file = SPIFFS.open(filename, FILE_WRITE);
-    if (!file) {
-        return false;
-    }
+    File file = LittleFS.open(filename, FILE_WRITE);
+    if (!file) return false;
+
+    BufferedWriter w(file);
 
     // ---- Header ----
     uint32_t magic = FILE_MAGIC;
-    if (file.write((uint8_t*)&magic, 4) != 4) {
-        file.close();
-        return false;
-    }
+    w.put(magic);
     uint8_t version = FILE_VERSION;
-    if (file.write(&version, 1) != 1) {
-        file.close();
-        return false;
-    }
+    w.put(version);
     uint8_t reserved[3] = {0, 0, 0};
-    if (file.write(reserved, 3) != 3) {
-        file.close();
-        return false;
-    }
+    w.put(reserved, 3);
 
     // ---- Song length ----
-    if (file.write((uint8_t*)&_length, sizeof(_length)) != sizeof(_length)) {
-        file.close();
-        return false;
-    }
+    w.put(_length);
 
     // ---- Dividers ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < _length; step++) {
-            if (file.write(&_dividerIndices[track][step], 1) != 1) {
-                file.close();
-                return false;
-            }
+        for (uint32_t step = 0; step < _length; step++) {
+            w.put(&_dividerIndices[track][step], 1);
         }
     }
 
-    // ---- Pattern data (version 2: CV + flags + 6 bytes) ----
+    // ---- Pattern data ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < _length; step++) {
+        for (uint32_t step = 0; step < _length; step++) {
             const StepPattern& pattern = _patterns[track][step];
             for (int s = 0; s < PATTERN_STEPS; s++) {
                 uint16_t cv = pattern.getCV(s) & 0x0FFF;
-                if (file.write((uint8_t*)&cv, 2) != 2) {
-                    file.close();
-                    return false;
-                }
-                uint8_t flags = pattern.getOn(s) ? 0x01 : 0x00;   // bit 0 = ON
-                if (file.write(&flags, 1) != 1) {
-                    file.close();
-                    return false;
-                }
-                uint8_t val = pattern.getProbability(s);
-                if (file.write(&val, 1) != 1) {
-                    file.close();
-                    return false;
-                }
-                val = pattern.getGateLength(s);
-                if (file.write(&val, 1) != 1) {
-                    file.close();
-                    return false;
-                }
-                val = pattern.getDecay(s);
-                if (file.write(&val, 1) != 1) {
-                    file.close();
-                    return false;
-                }
-                val = pattern.getAttack(s);
-                if (file.write(&val, 1) != 1) {
-                    file.close();
-                    return false;
-                }
-                val = pattern.getRatchet(s);
-                if (file.write(&val, 1) != 1) {
-                    file.close();
-                    return false;
-                }
-                val = pattern.getMicrotiming(s);
-                if (file.write(&val, 1) != 1) {
-                    file.close();
-                    return false;
-                }
+                w.put(cv);
+                uint8_t flags = pattern.getOn(s) ? 0x01 : 0x00;
+                w.put(flags);
+                uint8_t val = pattern.getProbability(s); w.put(val);
+                val = pattern.getGateLength(s);           w.put(val);
+                val = pattern.getDecay(s);                w.put(val);
+                val = pattern.getAttack(s);               w.put(val);
+                val = pattern.getRatchet(s);              w.put(val);
+                val = pattern.getMicrotiming(s);          w.put(val);
             }
         }
     }
 
     // ---- Pattern lengths ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < _length; step++) {
+        for (uint32_t step = 0; step < _length; step++) {
             uint8_t numSteps = _patterns[track][step].getNumSteps();
-            if (file.write(&numSteps, 1) != 1) {
-                file.close();
-                return false;
-            }
+            w.put(numSteps);
         }
     }
 
-    // ---- Quantizers (enabled + notes) ----
+    // ---- Quantizers ----
     for (int track = 0; track < 4; track++) {
         uint8_t enabled = sequencers[track]->isQuantizerEnabled() ? 1 : 0;
-        if (file.write(&enabled, 1) != 1) { file.close(); return false; }
-
+        w.put(enabled);
         uint8_t numNotes = _quantizers[track].getNumNotes();
-        if (file.write(&numNotes, 1) != 1) { file.close(); return false; }
-
+        w.put(numNotes);
         for (uint8_t i = 0; i < numNotes; i++) {
             const char* name = _quantizers[track].getNoteName(i);
-            if (file.write((const uint8_t*)name, 4) != 4) {
-                file.close();
-                return false;
-            }
+            w.put(name, 4);
             uint16_t dac = _quantizers[track].getNoteDAC(i);
-            if (file.write((uint8_t*)&dac, 2) != 2) {
-                file.close();
-                return false;
-            }
-            // inScale, version 5
+            w.put(dac);
             uint8_t inScale = _quantizers[track].getNote(i).inScale ? 1 : 0;
-            if (file.write(&inScale, 1) != 1) {
-                file.close();
-                return false;
-            }
+            w.put(inScale);
         }
     }
 
-    // ---- CV ranges (for editing) ----
+    // ---- CV ranges ----
     for (int track = 0; track < NUM_MELODIC_TRACKS; track++) {
         uint16_t minCV = sequencers[track]->getMinCV();
         uint16_t maxCV = sequencers[track]->getMaxCV();
-        if (file.write((uint8_t*)&minCV, 2) != 2 ||
-            file.write((uint8_t*)&maxCV, 2) != 2) {
-            file.close();
-            return false;
-        }
+        w.put(minCV);
+        w.put(maxCV);
     }
 
     // ---- Reset flags ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         uint8_t flag = sequencers[track]->getResetOnStep() ? 1 : 0;
-        if (file.write(&flag, 1) != 1) {
-            file.close();
-            return false;
-        }
+        w.put(flag);
     }
 
-    // ---- Swing amounts ----
+    // ---- Swing ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         uint8_t swingAmount = sequencers[track]->getSwingAmount();
-        if (file.write(&swingAmount, 1) != 1) {
-            file.close();
-            return false;
-        }
+        w.put(swingAmount);
     }
 
-    // ---- NEW: Quantizer range parameters (startDAC, endDAC, numNotes) ----
+    // ---- Quantizer range params ----
     for (int track = 0; track < 4; track++) {
         uint16_t startDAC = _quantizers[track].getStartDAC();
-        uint16_t endDAC = _quantizers[track].getEndDAC();
-        uint8_t numNotes = _quantizers[track].getNumNotes();
-        if (file.write((uint8_t*)&startDAC, 2) != 2 ||
-            file.write((uint8_t*)&endDAC, 2) != 2 ||
-            file.write((uint8_t*)&numNotes, 1) != 1) {
-            file.close();
-            return false;
-        }
+        uint16_t endDAC   = _quantizers[track].getEndDAC();
+        uint8_t numNotes  = _quantizers[track].getNumNotes();
+        w.put(startDAC);
+        w.put(endDAC);
+        w.put(numNotes);
     }
 
-    // ---- Quantizer scale index and root note (version 4) ----
+    // ---- Scale/root ----
     for (int track = 0; track < 4; track++) {
         uint8_t scaleIdx = _quantizers[track].getScaleIndex();
         uint8_t rootIdx  = _quantizers[track].getRootIndex();
-        if (file.write(&scaleIdx, 1) != 1 ||
-            file.write(&rootIdx, 1) != 1) {
-            file.close();
-            return false;
-        }
+        w.put(scaleIdx);
+        w.put(rootIdx);
     }
 
+    if (!w.finish()) {
+        file.close();
+        return false;
+    }
     file.close();
     return true;
 }
@@ -411,13 +384,13 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
 // File utilities (unchanged)
 // ----------------------------------------------------------------------
 void SongData::deleteFile(const char* filename) {
-    if (SPIFFS.exists(filename)) {
-        SPIFFS.remove(filename);
+    if (LittleFS.exists(filename)) {
+        LittleFS.remove(filename);
     }
 }
 
 bool SongData::exists(const char* filename) {
-    return SPIFFS.exists(filename);
+    return LittleFS.exists(filename);
 }
 
 // ----------------------------------------------------------------------

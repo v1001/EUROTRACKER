@@ -5,7 +5,7 @@
 #include "OutputHandler.h"
 #include "TrackerApp.h"
 #include "I2CGatekeeper.h"
-#include <SPIFFS.h>
+#include <LittleFS.h>
 
 
 // Clock pin: input when clock source is external, output when internal
@@ -135,12 +135,11 @@ void setup() {
     pinMode(userInput.save_button.pin, INPUT_PULLUP);
     bool resetRequested = (digitalRead(userInput.save_button.pin) == LOW);
 
-    if (!SPIFFS.begin(true)) {
+    if (!LittleFS.begin(true)) {
         display.print("Memory Error");
     } else {
         trackerApp.begin(resetRequested);
         startTimer();
-
         xTaskCreatePinnedToCore(uiTask, "UITask", 8192, NULL, 1, &uiTaskHandle, 0);
     }
 }

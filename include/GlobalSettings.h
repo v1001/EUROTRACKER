@@ -2,7 +2,7 @@
 #define GLOBAL_SETTINGS_H
 
 #include <Arduino.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 
 class GlobalSettings {
 public:
