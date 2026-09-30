@@ -18,10 +18,14 @@ public:
     void clearExitFlag() { _exitRequested = false; }
 
 private:
+    static const uint8_t MIN_OCTAVE = 0;
+    static const uint8_t MAX_OCTAVE = 9;
+    
     enum MenuItem {
         ITEM_MIN_CV,
+        ITEM_MIN_NOTE,
         ITEM_MAX_CV,
-        ITEM_NUM_NOTES,
+        ITEM_MAX_NOTE,
         ITEM_GENERATE,
         ITEM_EXIT
     };
@@ -34,7 +38,10 @@ private:
     int _selectedIndex;
     uint16_t _minCV;
     uint16_t _maxCV;
-    uint8_t _numNotes;
+    uint8_t _minNoteIndex;    // 0-11 pitch class
+    uint8_t _minNoteOctave;   // 0-9
+    uint8_t _maxNoteIndex;
+    uint8_t _maxNoteOctave;
     bool _exitRequested;
 
     void handleNavigation();

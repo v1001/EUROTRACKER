@@ -20,7 +20,8 @@ public:
     Quantizer();
     
     // Generate chromatic scale
-    void generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes);
+    void generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes,
+                       uint8_t startNoteIndex = 0, uint8_t startOctave = 4);
     
     // Get note by index
     const Note& getNote(uint8_t index) const;
@@ -61,6 +62,7 @@ public:
 
     void setNoteDAC(uint8_t index, uint16_t dac);
     void toggleNoteInScale(uint8_t index);
+    static bool parseNoteName(const char* name, uint8_t& pitchClass, uint8_t& octave);
     
 private:
     std::vector<Note> _notes;

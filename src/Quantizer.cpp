@@ -10,34 +10,46 @@ Quantizer::Quantizer()
     generateChromatic(0, 4095, 61);
 }
 
-void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes) {
+void Quantizer::generateChromatic(uint16_t startDAC, uint16_t endDAC, uint8_t numNotes,
+                                   uint8_t startNoteIndex, uint8_t startOctave) {
     _notes.clear();
     _notes.reserve(numNotes);
     _startDAC = startDAC;
     _endDAC = endDAC;
     _numNotes = numNotes;
-    
+
     if (numNotes < 2) return;
-    
+
     for (uint8_t i = 0; i < numNotes; i++) {
         Note note;
         note.dacValue = startDAC + (uint32_t)(endDAC - startDAC) * i / (numNotes - 1);
         note.inScale = true;
-        
-        uint8_t noteIndex = i % 12;
-        uint8_t octave = 4 + (i / 12);
-        
+
+        int absNote = (int)startNoteIndex + (int)i;
+        uint8_t noteIndex = (uint8_t)(absNote % 12);
+        uint8_t octave    = (uint8_t)(startOctave + (absNote / 12));
+
         snprintf(note.name, sizeof(note.name), "%s%d", NOTE_NAMES[noteIndex], octave);
-        
+
         _notes.push_back(note);
     }
-    // Reset to Chromatic scale with root c
     _scaleIndex = 0;
     _rootIndex = 0;
-    // All notes active (chromatic)
     for (auto& note : _notes) {
         note.inScale = true;
     }
+}
+
+bool Quantizer::parseNoteName(const char* name, uint8_t& pitchClass, uint8_t& octave) {
+    if (!name || strlen(name) < 2) return false;
+    for (int i = 0; i < 12; i++) {
+        if (NOTE_NAMES[i][0] == name[0]) {
+            pitchClass = (uint8_t)i;
+            octave = (uint8_t)atoi(name + 1);
+            return true;
+        }
+    }
+    return false;
 }
 
 void Quantizer::applyScaleIntervals(const uint8_t* intervals, uint8_t numIntervals, uint8_t rootIndex) {

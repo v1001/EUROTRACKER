@@ -6,7 +6,7 @@ StepSequencer::StepSequencer(DisplayManager& display, UserInput& userInput)
       _stepPending(false), _currentDACValue(0), _currentGateOutput(false), _gateOutputChanged(false),
       _lastEncoderAMove(0), _lastEncoderBMove(0), _lastEncAPos(0), _lastEncBPos(0),
       _quantizerEnabled(true), _minCV(0), _maxCV(4095), _quantizer(nullptr), _lastTickTime(0),
-      _gateQueue(nullptr), _cvQueue(nullptr), _resetOnStep(true), _swingAmount(0),
+      _gateQueue(nullptr), _cvQueue(nullptr), _resetOnStep(false), _swingAmount(0),
       _lastCVEventValue(0), _lastCVEventTimestamp(0) {
 }
 

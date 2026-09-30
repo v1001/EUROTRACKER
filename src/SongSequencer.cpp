@@ -72,17 +72,24 @@ void SongSequencer::begin(bool reset) {
 void SongSequencer::initSequencers() {
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = new StepSequencer(_display, _userInput);
-        
+
         // Pass per-track gate queue
         _sequencers[i]->setGateQueue(&_gateQueues[i]);
-        
-        // Pass quantizer reference and CV queue for melodic tracks (0-3)
+
         if (i < 4) {
+            // Melodic track defaults: quantizer ON, reset OFF (KEEP mode).
+            // Attack/decay behave as portamento between quantized notes
+            // rather than an envelope from zero.
             _sequencers[i]->setQuantizerRef(&_songData.getQuantizer(i));
-            _sequencers[i]->setCVQueue(&_cvQueues[i]);   // Pass corresponding CV queue
+            _sequencers[i]->setCVQueue(&_cvQueues[i]);
+            _sequencers[i]->setQuantizerEnabled(true);
+            _sequencers[i]->setResetOnStep(false);
         } else {
-            // Gate tracks (4-5) have no CV queue
+            // Gate-only tracks have no CV output. Reset ON keeps each
+            // trigger distinct and does not let long gates bleed across
+            // step boundaries.
             _sequencers[i]->setCVQueue(nullptr);
+            _sequencers[i]->setResetOnStep(true);
         }
     }
     updateSequencersFromStep(_currentPlayStep, true);
