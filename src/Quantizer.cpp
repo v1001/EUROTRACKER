@@ -172,3 +172,28 @@ bool Quantizer::inScaleMatchesApplied() const {
     }
     return true;
 }
+
+void Quantizer::setPitchClassInScale(uint8_t pitchClass, bool inScale) {
+    for (auto& note : _notes) {
+        char pc = note.name[0];
+        for (int i = 0; i < 12; i++) {
+            if (NOTE_NAMES[i][0] == pc) {
+                if (i == pitchClass) note.inScale = inScale;
+                break;
+            }
+        }
+    }
+}
+
+bool Quantizer::isPitchClassInScale(uint8_t pitchClass) const {
+    for (const auto& note : _notes) {
+        char pc = note.name[0];
+        for (int i = 0; i < 12; i++) {
+            if (NOTE_NAMES[i][0] == pc) {
+                if (i == pitchClass) return note.inScale;
+                break;
+            }
+        }
+    }
+    return false;
+}

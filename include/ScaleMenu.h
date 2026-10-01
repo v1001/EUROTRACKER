@@ -22,9 +22,16 @@ private:
     enum MenuItem {
         ITEM_SCALE,
         ITEM_ROOT,
+        ITEM_NOTES,
         ITEM_APPLY,
-        ITEM_EXIT
+        ITEM_EXIT,
+        MENU_ITEM_COUNT
     };
+
+    static const int PITCH_COUNT = 12;
+    static const int NOTE_ROW_X = 5;
+    static const int NOTE_ROW_SPACING = 10;
+    static const int NOTE_ROW_Y = 30;
 
     DisplayManager& _display;
     UserInput& _userInput;
@@ -34,12 +41,19 @@ private:
     int _selectedIndex;
     uint8_t _selectedScaleIndex;
     uint8_t _selectedRootIndex;
+    int _noteCursor;
+    bool _workingNotes[PITCH_COUNT];
     bool _exitRequested;
 
     void handleNavigation();
     void handleEditing();
     void apply();
     void loadCurrentValue();
+    void loadMaskFromQuantizer();
+    void rebuildMaskFromScale();
+    void toggleCurrentNote();
+    void drawNotesRow(int y);
+    uint8_t getDisplayPitchClass(int displayPos) const;
 
     long _lastEncPosA;
     long _lastEncPosB;
