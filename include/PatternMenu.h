@@ -6,6 +6,7 @@
 #include "SongData.h"
 #include "StepSequencer.h"
 #include "SongSequencer.h"
+#include "StepEditMenu.h"
 
 class PatternMenu {
 public:
@@ -26,9 +27,15 @@ private:
         MENU_DIVIDER,
         MENU_LENGTH,
         MENU_TRANSPOSE,
+        MENU_STEP_EDIT,
         MENU_SAVE_EXIT,
         MENU_EXIT_NOSAVE
     };
+
+    StepEditMenu* _stepEditMenu;
+    bool _inStepEditMenu;
+
+    void enterStepEdit();
     
     DisplayManager& _display;
     UserInput& _userInput;

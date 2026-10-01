@@ -54,9 +54,33 @@ public:
     void setStepDurationUs(uint64_t stepDurationUs) { _stepDurationUs = stepDurationUs; }
     void setGateQueue(GateQueue* queue) { _gateQueue = queue; }
     void setCVQueue(CVQueue* queue) { _cvQueue = queue; }
+
+    struct CopiedStep {
+        bool on;
+        uint16_t cv;
+        uint8_t probability;
+        uint8_t gateLength;
+        uint8_t decay;
+        uint8_t attack;
+        uint8_t ratchet;
+        uint8_t microtiming;
+        uint8_t sourceStep;    // 0-based step index the buffer was copied from
+        uint8_t sourceTrack;   // 0-based track index the buffer was copied from
+        bool hasData;
+    };
+
+    // System-wide step clipboard. Shared across all StepSequencer instances.
+    static void copyStep(const StepPattern* pattern, uint8_t stepIndex,
+                         uint8_t trackIndex);
+    static void pasteStep(StepPattern* pattern, uint8_t stepIndex);
+    static bool hasCopiedStep() { return _copiedStep.hasData; }
+    static uint8_t getCopiedSourceStep() { return _copiedStep.sourceStep; }
+    static uint8_t getCopiedSourceTrack() { return _copiedStep.sourceTrack; }
+    static void clearClipboard() { _copiedStep.hasData = false; }
     
 private:
     static const uint16_t MAX_CLOCK_DIVISION = 192;
+    static CopiedStep _copiedStep;
     
     DisplayManager& _display;
     UserInput& _userInput;

@@ -7,10 +7,12 @@ PatternMenu::PatternMenu(DisplayManager& display, UserInput& userInput, SongSequ
       _editValue(0), _tempDivider(0), _tempLength(0), _tempTranspose(0),
       _exitRequested(false), _saveOnExit(true),
       _lastNavTime(0), _lastJoystickMoveTime(0),
-      _joystickWasCentered(true), _lastEncPos(0) {
+      _joystickWasCentered(true), _lastEncPos(0),
+      _stepEditMenu(nullptr), _inStepEditMenu(false){
 }
 
 PatternMenu::~PatternMenu() {
+    delete _stepEditMenu;
 }
 
 void PatternMenu::enter(int track, int step, StepSequencer* sequencer) {
@@ -44,6 +46,14 @@ void PatternMenu::loadCurrentValue() {
 }
 
 void PatternMenu::update() {
+    if (_inStepEditMenu) {
+        _stepEditMenu->update();
+        if (_stepEditMenu->shouldExit()) {
+            _stepEditMenu->clearExitFlag();
+            _inStepEditMenu = false;
+        }
+        return;
+    }
     handleNavigation();
     handleEditing();
     handleButtons();
@@ -122,13 +132,23 @@ void PatternMenu::handleEditing() {
 
 void PatternMenu::handleButtons() {
     if (_userInput.joystick_button.just_released) {
-        if (_selectedIndex == MENU_SAVE_EXIT) {
+        if (_selectedIndex == MENU_STEP_EDIT) {
+            enterStepEdit();
+        } else if (_selectedIndex == MENU_SAVE_EXIT) {
             applyChanges();
             _exitRequested = true;
         } else if (_selectedIndex == MENU_EXIT_NOSAVE) {
             _exitRequested = true;
         }
     }
+}
+
+void PatternMenu::enterStepEdit() {
+    _inStepEditMenu = true;
+    if (!_stepEditMenu) {
+        _stepEditMenu = new StepEditMenu(_display, _userInput, _songSequencer);
+    }
+    _stepEditMenu->enter(_track, _step);
 }
 
 void PatternMenu::saveAndExit() {
@@ -173,13 +193,18 @@ void PatternMenu::applyChanges() {
 }
 
 void PatternMenu::draw() {
+    if (_inStepEditMenu) {
+        _stepEditMenu->draw();
+        return;
+    }
+
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
-    
-    const char* items[] = {"Divider", "Length", "Transpose", "Save && Exit", "Exit w/o Save"};
+
+    const char* items[] = {"Divider", "Length", "Transpose", "Step Edit", "Save && Exit", "Exit w/o Save"};
     char valueBuffer[16];
-    
-    for (int i = 0; i < 5; i++) {
+
+    for (int i = 0; i < 6; i++) {
         int y = i * 10;
         const char* value = "";
         

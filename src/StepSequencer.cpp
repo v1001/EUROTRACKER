@@ -302,3 +302,39 @@ void StepSequencer::setMaxCV(uint16_t maxCV) {
         _maxCV = maxCV;
     }
 }
+
+StepSequencer::CopiedStep StepSequencer::_copiedStep = {
+    false, 0, 0, 0, 0, 0, 1, 0, 0, 0, false
+};
+
+void StepSequencer::copyStep(const StepPattern* pattern, uint8_t stepIndex,
+                              uint8_t trackIndex) {
+    if (!pattern) return;
+    if (stepIndex >= pattern->getNumSteps()) return;
+
+    _copiedStep.on          = pattern->getOn(stepIndex);
+    _copiedStep.cv          = pattern->getCV(stepIndex);
+    _copiedStep.probability = pattern->getProbability(stepIndex);
+    _copiedStep.gateLength  = pattern->getGateLength(stepIndex);
+    _copiedStep.decay       = pattern->getDecay(stepIndex);
+    _copiedStep.attack      = pattern->getAttack(stepIndex);
+    _copiedStep.ratchet     = pattern->getRatchet(stepIndex);
+    _copiedStep.microtiming = pattern->getMicrotiming(stepIndex);
+    _copiedStep.sourceStep  = stepIndex;
+    _copiedStep.sourceTrack = trackIndex;
+    _copiedStep.hasData     = true;
+}
+
+void StepSequencer::pasteStep(StepPattern* pattern, uint8_t stepIndex) {
+    if (!pattern || !_copiedStep.hasData) return;
+    if (stepIndex >= pattern->getNumSteps()) return;
+
+    pattern->setOn(stepIndex,          _copiedStep.on);
+    pattern->setCV(stepIndex,          _copiedStep.cv);
+    pattern->setProbability(stepIndex, _copiedStep.probability);
+    pattern->setGateLength(stepIndex,  _copiedStep.gateLength);
+    pattern->setDecay(stepIndex,       _copiedStep.decay);
+    pattern->setAttack(stepIndex,      _copiedStep.attack);
+    pattern->setRatchet(stepIndex,     _copiedStep.ratchet);
+    pattern->setMicrotiming(stepIndex, _copiedStep.microtiming);
+}
