@@ -5,6 +5,7 @@
 #include "OutputHandler.h"
 #include "TrackerApp.h"
 #include "I2CGatekeeper.h"
+#include "SongData.h"
 #include <LittleFS.h>
 
 
@@ -37,8 +38,6 @@ uint64_t getQuarterNoteTime() {
     if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
         return 60000000.0f / trackerApp.getInternalBPMFloat();
     } else {
-        // getBasePeriod() is time between external pulses.
-        // Quarter note period = pulse period × PPQN.
         uint16_t ppqn = trackerApp.getExternalPPQNValue();
         return syncTimer.getBasePeriod() * ppqn;
     }
@@ -49,8 +48,10 @@ void IRAM_ATTR onTimerTick(uint16_t tickCount) {
 
     // Clock output when running from internal clock
     if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
-        uint16_t ppqn = trackerApp.getExternalPPQNValue();
-        uint8_t toggleEvery = 96 / ppqn;
+        uint8_t idx = trackerApp.getClockOutDivider();
+        if (idx >= SongData::getNumDividers()) idx = SongData::getNumDividers() - 1;
+        uint16_t divValue = SongData::getDividerValueByIndex(idx);
+        uint16_t toggleEvery = divValue / 2;
         if (toggleEvery > 0 && (tickCount % toggleEvery) == 0) {
             clockOutputState = !clockOutputState;
             digitalWrite(CLOCK_PIN, clockOutputState ? HIGH : LOW);
@@ -64,7 +65,6 @@ void startTimer() {
         float frequencyHz = trackerApp.getInternalBPMFloat() / 60.0f;
         syncTimer.beginStandalone(192, onTimerTick, frequencyHz);
 
-        // Configure clock pin as output for master mode
         pinMode(CLOCK_PIN, OUTPUT);
         clockOutputState = false;
         digitalWrite(CLOCK_PIN, LOW);
@@ -76,9 +76,8 @@ void startTimer() {
 
 void uiTask(void* parameter) {
     while (1) {
-        // Wait until the previous display frame is fully sent
         while (display.needsUpdate()) {
-            vTaskDelay(pdMS_TO_TICKS(1));   // yield to I2C gatekeeper task
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
 
         userInput.readInputs();
@@ -86,10 +85,8 @@ void uiTask(void* parameter) {
 
         trackerApp.update(getQuarterNoteTime());
 
-        // Signal that a new frame is ready to be sent
         display.update();
 
-        // Check if timer settings changed and set restart flag
         static GlobalSettings::ClockSource lastClockSource = trackerApp.getClockSource();
         static uint16_t lastInternalBPM = trackerApp.getInternalBPM();
         static uint8_t lastExternalPPQN = trackerApp.getExternalPPQN();
@@ -110,16 +107,13 @@ void setup() {
     pinMode(25, INPUT);
     randomSeed(analogRead(25));
 
-    // Initialize I2C gatekeeper
     if (!i2cGatekeeper.begin(1000000)) {
-        while (1);   // I2C devices not found – halt
+        while (1);
     }
 
-    // Initialize display hardware
     i2cGatekeeper.displayInit();
     i2cGatekeeper.displayClear();
 
-    // Initialize display framebuffer
     display.begin();
 
     userInput.begin();
@@ -131,7 +125,6 @@ void setup() {
         outputHandler.setDACChannel(ch, 0);
     }
 
-    // Check if save button is pressed during startup
     pinMode(userInput.save_button.pin, INPUT_PULLUP);
     bool resetRequested = (digitalRead(userInput.save_button.pin) == LOW);
 
@@ -145,24 +138,19 @@ void setup() {
 }
 
 void loop() {
-    // Check if timer needs restart (settings changed)
     if (timerNeedsRestart) {
         timerNeedsRestart = false;
         startTimer();
     }
 
-    // Real‑time sequencer processing (Core 1)
     trackerApp.processOutputs();
 
-    // I2C GATEKEEPER OPERATIONS (one per loop iteration, non‑blocking)
-    // Priority 1: Update DAC – send all four channels
     for (int ch = 0; ch < 4; ch++) {
         i2cGatekeeper.setDAC(ch, outputHandler.getDACValue(ch));
     }
 
     outputHandler.setAllDigitalOutputs();
 
-    // Priority 2: Send one display block if a frame is pending
     if (display.needsUpdate()) {
         uint8_t* framebuffer = display.getFramebuffer();
 
@@ -176,7 +164,7 @@ void loop() {
             currentPage++;
             if (currentPage >= 8) {
                 currentPage = 0;
-                display.clearUpdateFlag();   // all pages sent
+                display.clearUpdateFlag();
             }
         }
     }
