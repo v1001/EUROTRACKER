@@ -21,13 +21,14 @@ public:
     // Exit control (mimics MainMenu)
     bool shouldExit() const { return _exitRequested; }
     void clearExitFlag() { _exitRequested = false; }
+    bool isInSubMenu() const { return _inStepEditMenu; }
     
 private:
     enum MenuItem {
-        MENU_DIVIDER,
-        MENU_LENGTH,
         MENU_TRANSPOSE,
         MENU_STEP_EDIT,
+        MENU_DIVIDER,
+        MENU_LENGTH,
         MENU_SAVE_EXIT,
         MENU_EXIT_NOSAVE
     };

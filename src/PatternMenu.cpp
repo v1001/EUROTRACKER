@@ -34,6 +34,7 @@ void PatternMenu::enter(int track, int step, StepSequencer* sequencer) {
     _lastEncPos = _userInput.encoder_a.position;
     
     loadCurrentValue();
+    _inStepEditMenu = false;
 }
 
 void PatternMenu::loadCurrentValue() {
@@ -131,7 +132,7 @@ void PatternMenu::handleEditing() {
 }
 
 void PatternMenu::handleButtons() {
-    if (_userInput.joystick_button.just_released) {
+    if (_userInput.joystick_button.just_pressed) {
         if (_selectedIndex == MENU_STEP_EDIT) {
             enterStepEdit();
         } else if (_selectedIndex == MENU_SAVE_EXIT) {
@@ -201,7 +202,14 @@ void PatternMenu::draw() {
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
 
-    const char* items[] = {"Divider", "Length", "Transpose", "Step Edit", "Save && Exit", "Exit w/o Save"};
+    const char* items[] = {
+        "Transpose",
+        "Step Edit",
+        "Divider",
+        "Length",
+        "Save && Exit",
+        "Exit w/o Save"
+    };
     char valueBuffer[16];
 
     for (int i = 0; i < 6; i++) {

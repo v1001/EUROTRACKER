@@ -163,6 +163,12 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
     
     // Pattern Menu -> Sequencer UI (save button: save settings and exit)
     if (_currentUIState == STATE_PATTERN_MENU && _userInput.save_button.just_pressed) {
+        auto* pm = static_cast<PatternMenu*>(_patternMenu);
+        if (pm && pm->isInSubMenu()) {
+            // Submenu owns the save button while active. Do not exit
+            // PatternMenu on press; StepEditMenu will handle the release.
+            return;
+        }
         if (_patternMenu) static_cast<PatternMenu*>(_patternMenu)->saveAndExit();
         _lastStateTransitionTime = now;
         _currentUIState = STATE_SEQUENCER_UI;
