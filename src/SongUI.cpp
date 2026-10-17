@@ -33,7 +33,7 @@ void SongUI::draw() {
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
     
-    // Header - track titles (show Q instead of T for quantized tracks)
+    // Header - track titles
     for (int i = 0; i < NUM_TRACKS; i++) {
         char label[4];
         sprintf(label, "T%d", i + 1);
@@ -41,19 +41,25 @@ void SongUI::draw() {
     }
     _display.drawLine(0, 10, 128, 10, _display.colorWhite());
     
-    // Song steps
+    // Draw song steps data
     for (int row = 0; row < ROWS_PER_PAGE; row++) {
         int stepNum = _scrollOffset + row;
         if (stepNum >= _songData.getLength()) break;
         
         int y = 14 + row * 10;
+        SongData::SongStep* step = _songData.getStep(stepNum);
         
-        // Show progress bar for currently playing step, otherwise show step number
+        // Show progress bar for currently playing step, otherwise show step number or loop count
         if (stepNum == _currentPlayingStep && _playbackProgress > 0 && _playbackProgress < 100) {
             drawProgressBar(2, y, 16, 8, _playbackProgress);
         } else {
             char stepText[5];
-            sprintf(stepText, "%02d", stepNum + 1);
+            if (step->loopTarget != nullptr) {
+                // Display as X + 1
+                sprintf(stepText, "L%d", step->loopCount + 1); 
+            } else {
+                sprintf(stepText, "%02d", stepNum + 1);
+            }
             _display.printAt(stepText, 2, y, ALIGN_LEFT);
         }
         
@@ -69,6 +75,40 @@ void SongUI::draw() {
         }
     }
     
+    // Draw Loop Lines
+    for (int row = 0; row < ROWS_PER_PAGE; row++) {
+        int stepNum = _scrollOffset + row;
+        if (stepNum >= _songData.getLength()) break;
+        
+        SongData::SongStep* step = _songData.getStep(stepNum);
+        if (step->loopTarget != nullptr) {
+            int targetIdx = _songData.getStepIndex(step->loopTarget);
+            int yCurrent = 14 + row * 10 + 4; // Middle of the current row
+            
+            if (targetIdx >= _scrollOffset && targetIdx < _scrollOffset + ROWS_PER_PAGE) {
+                // Target is on screen
+                int targetRow = targetIdx - _scrollOffset;
+                int yTarget = 14 + targetRow * 10 + 4;
+                
+                _display.drawLine(0, yTarget, 0, yCurrent, _display.colorWhite());
+                _display.drawLine(0, yTarget, 2, yTarget, _display.colorWhite());
+                _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
+            } else if (targetIdx < _scrollOffset) {
+                // Target is above view
+                _display.drawLine(0, 10, 0, yCurrent, _display.colorWhite());
+                _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
+                // Arrow pointing up
+                _display.drawLine(0, 10, 2, 12, _display.colorWhite());
+            } else {
+                // Target is below view
+                _display.drawLine(0, yCurrent, 0, 53, _display.colorWhite());
+                _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
+                // Arrow pointing down
+                _display.drawLine(0, 53, 2, 51, _display.colorWhite());
+            }
+        }
+    }
+    
     // Cursor
     if (_cursorCol >= 1 && _cursorCol <= NUM_TRACKS) {
         int cursorX = _trackXPositions[_cursorCol - 1] - 1;
@@ -78,7 +118,6 @@ void SongUI::draw() {
     
     // Status bar
     drawStatusBar();
-    // No display.update() here
 }
 
 void SongUI::drawPatternPreview(StepPattern& pattern, int x, int y) {
@@ -107,10 +146,8 @@ void SongUI::drawPatternPreview(StepPattern& pattern, int x, int y) {
 }
 
 void SongUI::drawStatusBar() {
-   
     char status[32];
     sprintf(status, "A:ROT B:MOD");
-
     _display.printAt(status, 48, 54, ALIGN_LEFT);
 }
 

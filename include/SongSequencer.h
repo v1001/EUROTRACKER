@@ -52,6 +52,10 @@ public:
     bool insertStep(int selectedStep);
     bool deleteStep(int selectedStep);
     bool cloneStep(int selectedStep);
+    
+    // Loop Edits (mutex protected)
+    bool setStepLoop(int stepIndex, int targetIndex, uint8_t count);
+    void clearStepLoop(int stepIndex);
 
     void saveCurrentProject();
     void loadCurrentProject();
@@ -71,6 +75,7 @@ public:
 private:
     static const int NUM_TRACKS = 6;
     static const char* PROJECT_FILENAME;
+    static const uint32_t MAX_SONG_LENGTH = 64;
     uint16_t _lastDACValues[4];
   
     DisplayManager& _display;
@@ -80,6 +85,7 @@ private:
     SongData _songData;
     SongUI _songUI;
     StepSequencer* _sequencers[NUM_TRACKS];
+    uint8_t _stepLoopCounters[MAX_SONG_LENGTH];
 
     // Event queues
     GateQueue _gateQueues[6];

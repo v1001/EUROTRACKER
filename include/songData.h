@@ -9,7 +9,7 @@
 class SongData {
 public:
     static const uint32_t FILE_MAGIC = 0x534F4E47;   // "SONG"
-    static const uint8_t FILE_VERSION = 5;
+    static const uint8_t FILE_VERSION = 6;           // Bumped for loops
 
     static const uint32_t MAX_SONG_LENGTH = 64;
     static const uint32_t DEFAULT_SONG_LENGTH = 4;
@@ -21,30 +21,29 @@ public:
         uint16_t value;
     };
 
-    // The Linked List Node
     struct SongStep {
         StepPattern patterns[NUM_TRACKS];
         uint8_t dividers[NUM_TRACKS];
+        
         SongStep* next;
+        SongStep* loopTarget;
+        uint8_t loopCount;
     };
 
     SongData();
     ~SongData();
 
     void init();
-    void clear();
 
     bool load(const char* filename, StepSequencer** sequencers);
     bool save(const char* filename, StepSequencer** sequencers);
     void deleteFile(const char* filename);
     bool exists(const char* filename);
 
-    // Structural Edits
     bool insertStep(int index);
     bool deleteStep(int index);
     bool cloneStep(int index);
 
-    // Getters (O(1) using _steps lookup array)
     uint32_t getLength() const { return _length; }
     StepPattern& getPattern(int track, int step) { return _steps[step]->patterns[track]; }
     const StepPattern& getPattern(int track, int step) const { return _steps[step]->patterns[track]; }
@@ -75,26 +74,29 @@ public:
     const Quantizer& getQuantizer(int track) const;
     void setQuantizer(int track, const Quantizer& quantizer);
 
+    // Loop management
+    SongStep* getStep(int index);
+    int getStepIndex(SongStep* target) const;
+    bool setStepLoop(int stepIndex, int targetIndex, uint8_t count);
+    void clearStepLoop(int stepIndex);
+
 private:
     static const int NUM_MELODIC_TRACKS = 4;
     static const int NUM_DIVIDERS = 9;
     static const Divider _dividers[NUM_DIVIDERS];
 
-    // Pre-allocated pool prevents heap fragmentation
     SongStep _nodePool[MAX_SONG_LENGTH];
     SongStep* _head;
     SongStep* _tail;
     SongStep* _steps[MAX_SONG_LENGTH];
     uint32_t _length;
 
-    // Copy/Paste buffers
     StepPattern _copiedPattern;
     uint8_t _copiedDivider;
     bool _hasCopiedData;
 
     Quantizer _quantizers[4];
 
-    // Helpers
     void rebuildStepPointers();
     SongStep* getFreeNode();
 };

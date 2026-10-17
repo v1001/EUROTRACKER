@@ -109,6 +109,9 @@ void SongData::init() {
     // 2. Initialize the data for all nodes in the pool
     SongStep* curr = &_nodePool[0];
     for (int i = 0; i < MAX_SONG_LENGTH; i++) {
+        curr->loopTarget = nullptr;
+        curr->loopCount = 0;
+
         for (int track = 0; track < NUM_TRACKS; track++) {
             curr->dividers[track] = 4; // Default x1
             curr->patterns[track].init(PATTERN_STEPS);
@@ -134,10 +137,6 @@ void SongData::init() {
     rebuildStepPointers();
 }
 
-void SongData::clear() {
-    init();
-}
-
 // ----------------------------------------------------------------------
 // Structural Edits
 // ----------------------------------------------------------------------
@@ -147,6 +146,9 @@ bool SongData::insertStep(int index) {
     if (!newNode) return false;
 
     // Initialize the new node
+    newNode->loopTarget = nullptr;
+    newNode->loopCount = 0;
+
     for (int t = 0; t < NUM_TRACKS; t++) {
         newNode->dividers[t] = 4;
         newNode->patterns[t].init(PATTERN_STEPS);
@@ -179,6 +181,14 @@ bool SongData::deleteStep(int index) {
 
     SongStep* toDelete = _steps[index];
 
+    // Clear any loops pointing to the deleted step
+    for (uint32_t i = 0; i < _length; i++) {
+        if (_steps[i]->loopTarget == toDelete) {
+            _steps[i]->loopTarget = nullptr;
+            _steps[i]->loopCount = 0;
+        }
+    }
+
     if (index == 0) {
         _head = _head->next;
     } else {
@@ -198,6 +208,9 @@ bool SongData::cloneStep(int index) {
     if (_length >= MAX_SONG_LENGTH || index < 0 || index >= (int)_length) return false;
     SongStep* newNode = getFreeNode();
     if (!newNode) return false;
+
+    newNode->loopTarget = nullptr;
+    newNode->loopCount = 0;
 
     // Copy data
     for (int t = 0; t < NUM_TRACKS; t++) {
@@ -221,7 +234,7 @@ bool SongData::cloneStep(int index) {
 }
 
 // ----------------------------------------------------------------------
-// File operations (streaming, version 5)
+// File operations (streaming, version 6)
 // ----------------------------------------------------------------------
 bool SongData::load(const char* filename, StepSequencer** sequencers) {
     if (!LittleFS.exists(filename)) return false;
@@ -236,7 +249,7 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
 
     uint8_t version;
     if (file.read(&version, 1) != 1) { file.close(); return false; }
-    if (version != FILE_VERSION) { file.close(); return false; }
+    if (version < 5 || version > FILE_VERSION) { file.close(); return false; }
 
     file.seek(file.position() + 3);   // reserved
 
@@ -300,6 +313,31 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
             if (file.read(&numSteps, 1) != 1) { file.close(); return false; }
             if (numSteps > StepPattern::MAX_STEPS) numSteps = StepPattern::MAX_STEPS;
             _steps[step]->patterns[track].setNumSteps(numSteps);
+        }
+    }
+
+    // ---- Song Loops (Version 6) ----
+    if (version >= 6) {
+        for (uint32_t step = 0; step < _length; step++) {
+            uint8_t targetIdx;
+            uint8_t count;
+            if (file.read(&targetIdx, 1) != 1 || file.read(&count, 1) != 1) {
+                file.close(); return false;
+            }
+            
+            if (targetIdx != 0xFF && targetIdx < _length) {
+                _steps[step]->loopTarget = _steps[targetIdx];
+                _steps[step]->loopCount = count;
+            } else {
+                _steps[step]->loopTarget = nullptr;
+                _steps[step]->loopCount = 0;
+            }
+        }
+    } else {
+        // Version 5 migration: no loops
+        for (uint32_t step = 0; step < _length; step++) {
+            _steps[step]->loopTarget = nullptr;
+            _steps[step]->loopCount = 0;
         }
     }
 
@@ -380,6 +418,7 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     needed += _length * NUM_TRACKS;
     needed += _length * NUM_TRACKS * PATTERN_STEPS * (2 + 1 + 1 + 1 + 1 + 1 + 1 + 1);
     needed += _length * NUM_TRACKS;
+    needed += _length * 2; // Loop data
     for (int track = 0; track < 4; track++) {
         needed += 1 + 1 + _quantizers[track].getNumNotes() * (4 + 2 + 1);
     }
@@ -442,6 +481,19 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
             uint8_t numSteps = _steps[step]->patterns[track].getNumSteps();
             w.put(numSteps);
         }
+    }
+
+    // ---- Song Loops (Version 6) ----
+    for (uint32_t step = 0; step < _length; step++) {
+        SongStep* s = _steps[step];
+        uint8_t targetIdx = 0xFF;
+        
+        if (s->loopTarget != nullptr) {
+            targetIdx = (uint8_t)getStepIndex(s->loopTarget);
+        }
+        
+        w.put(targetIdx);
+        w.put(s->loopCount);
     }
 
     // ---- Quantizers ----
@@ -523,6 +575,8 @@ void SongData::setLength(uint32_t length) {
             for (uint32_t i = _length; i < length; i++) {
                 SongStep* newNode = getFreeNode();
                 if (newNode) {
+                    newNode->loopTarget = nullptr;
+                    newNode->loopCount = 0;
                     for (int t = 0; t < NUM_TRACKS; t++) {
                         newNode->dividers[t] = 4;
                         newNode->patterns[t].init(PATTERN_STEPS);
@@ -639,5 +693,46 @@ const Quantizer& SongData::getQuantizer(int track) const {
 void SongData::setQuantizer(int track, const Quantizer& quantizer) {
     if (track >= 0 && track < 4) {
         _quantizers[track] = quantizer;
+    }
+}
+
+// ----------------------------------------------------------------------
+// Loop Management
+// ----------------------------------------------------------------------
+SongData::SongStep* SongData::getStep(int index) {
+    if (index < 0 || index >= (int)_length) return nullptr;
+    return _steps[index];
+}
+
+int SongData::getStepIndex(SongStep* target) const {
+    if (!target) return -1;
+    for (uint32_t i = 0; i < _length; i++) {
+        if (_steps[i] == target) return (int)i;
+    }
+    return -1;
+}
+
+bool SongData::setStepLoop(int stepIndex, int targetIndex, uint8_t count) {
+    if (stepIndex < 0 || stepIndex >= (int)_length) return false;
+    if (targetIndex < 0 || targetIndex >= (int)_length) return false;
+    if (targetIndex > stepIndex) return false; // Can only loop backwards
+    
+    // Max  7
+    if (count < 1 || count > 7) return false;
+
+    // Check for nested loops
+    for (int i = targetIndex; i < stepIndex; i++) {
+        if (_steps[i]->loopTarget != nullptr) return false;
+    }
+
+    _steps[stepIndex]->loopTarget = _steps[targetIndex];
+    _steps[stepIndex]->loopCount = count;
+    return true;
+}
+
+void SongData::clearStepLoop(int stepIndex) {
+    if (stepIndex >= 0 && stepIndex < (int)_length) {
+        _steps[stepIndex]->loopTarget = nullptr;
+        _steps[stepIndex]->loopCount = 0;
     }
 }

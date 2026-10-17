@@ -22,7 +22,8 @@ private:
         ITEM_INSERT,
         ITEM_DELETE,
         ITEM_CLONE,
-        ITEM_EXIT,
+        ITEM_LOOP_TARGET,
+        ITEM_LOOP_COUNT,
         ITEM_COUNT
     };
 
@@ -37,11 +38,20 @@ private:
     unsigned long _lastJoystickMoveTime;
     bool _joystickWasCentered;
 
+    long _lastEncPosA;
+    long _lastEncPosB;
+
+    // Loop settings being edited
+    int _loopTargetStep; // -1 means None
+    int _loopCount;      // 1 to 7 internally (displays as 2 to 8)
+
     char _popupText[32];
     unsigned long _popupTime;
 
     void handleNavigation();
-    void handleEditing();
+    void handleEncoders();
+    void handleButtons();
+    void applyLoopSettings(); // New helper
     void showPopup(const char* text);
 };
 

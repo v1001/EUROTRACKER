@@ -47,9 +47,35 @@ void SongSequencer::advanceToNextStep() {
     
     int nextStep = _currentPlayStep;
     if (_songState == STATE_PLAY_SONG) {
-        nextStep = nextStep + 1;
+        SongData::SongStep* current = _songData.getStep(_currentPlayStep);
+        
+        // 1. Check for active loop
+        if (current != nullptr && current->loopTarget != nullptr && _stepLoopCounters[_currentPlayStep] > 0) {
+            _stepLoopCounters[_currentPlayStep]--;
+            int targetIdx = _songData.getStepIndex(current->loopTarget);
+            
+            if (targetIdx >= 0) {
+                nextStep = targetIdx;
+                // Reset counters for the looped section so they can trigger again
+                for (int i = nextStep; i < _currentPlayStep; i++) {
+                    _stepLoopCounters[i] = _songData.getStep(i)->loopCount;
+                }
+            } else {
+                // Fallback safety: advance normally if target is lost
+                nextStep = nextStep + 1;
+            }
+        } else {
+            // 2. Normal progression
+            nextStep = nextStep + 1;
+        }
+
+        // 3. Handle wrap-around to the beginning of the song
         if (nextStep >= _songData.getLength()) {
             nextStep = 0;
+            // Reset ALL counters so loops can trigger again in the next pass
+            for (int i = 0; i < _songData.getLength(); i++) {
+                _stepLoopCounters[i] = _songData.getStep(i)->loopCount;
+            }
         }
     }
     
@@ -67,16 +93,12 @@ void SongSequencer::advanceToNextStep() {
 
 bool SongSequencer::insertStep(int selectedStep) {
     portENTER_CRITICAL(&_songMutex);
-    
     bool success = _songData.insertStep(selectedStep);
     
-    // If we inserted before the currently playing step, shift the playback pointer
-    if (success && _songState != STATE_STOP && selectedStep <= _currentPlayStep) {
+    // Fix: Only shift playback pointer if inserted strictly BEFORE the playing step
+    if (success && _songState != STATE_STOP && selectedStep < _currentPlayStep) {
         _currentPlayStep++;
-        // The StepPattern pointers don't need updating because the linked list 
-        // keeps the nodes at the same physical memory addresses.
     }
-    
     portEXIT_CRITICAL(&_songMutex);
     
     if (success) _songUI.setSaveFlag();
@@ -102,17 +124,35 @@ bool SongSequencer::deleteStep(int selectedStep) {
 
 bool SongSequencer::cloneStep(int selectedStep) {
     portENTER_CRITICAL(&_songMutex);
-    
     bool success = _songData.cloneStep(selectedStep);
     
+    // Fix: Only shift playback pointer if cloned strictly BEFORE the playing step
     if (success && _songState != STATE_STOP && selectedStep < _currentPlayStep) {
         _currentPlayStep++;
     }
-    
     portEXIT_CRITICAL(&_songMutex);
     
     if (success) _songUI.setSaveFlag();
     return success;
+}
+
+// NEW: Mutex-protected loop setter
+bool SongSequencer::setStepLoop(int stepIndex, int targetIndex, uint8_t count) {
+    portENTER_CRITICAL(&_songMutex);
+    bool success = _songData.setStepLoop(stepIndex, targetIndex, count);
+    portEXIT_CRITICAL(&_songMutex);
+    
+    if (success) _songUI.setSaveFlag();
+    return success;
+}
+
+// NEW: Mutex-protected loop clearer
+void SongSequencer::clearStepLoop(int stepIndex) {
+    portENTER_CRITICAL(&_songMutex);
+    _songData.clearStepLoop(stepIndex);
+    portEXIT_CRITICAL(&_songMutex);
+    
+    _songUI.setSaveFlag();
 }
 
 void SongSequencer::initSequencers() {
@@ -219,6 +259,12 @@ void SongSequencer::processClockTick(uint16_t tickCount) {
         _pendingStart = false;
         _songState = STATE_PLAY_SONG;
         _currentStepTickCounter = 0;
+        
+        //Initialize all loop counters right before playback begins
+        for (int i = 0; i < _songData.getLength(); i++) {
+            _stepLoopCounters[i] = _songData.getStep(i)->loopCount;
+        }
+        
         updateSequencersFromStep(_currentPlayStep, true);
         _stepTicksRemaining = _songData.getStepLengthInTicks(_currentPlayStep);
     }
@@ -294,7 +340,10 @@ void SongSequencer::handleStateMachine() {
         _songState = STATE_STOP;
         _currentStepTickCounter = 0;
         _pendingStart = false;
-        _pendingSequencer = false; // <-- Add this line
+        _pendingSequencer = false;
+        for (int i = 0; i < _songData.getLength(); i++) {
+            _stepLoopCounters[i] = _songData.getStep(i)->loopCount;
+        }
         _songUI.setSaveFlag();
     } else if (_userInput.save_button.just_pressed) {
         if (_songState == STATE_STOP) {
