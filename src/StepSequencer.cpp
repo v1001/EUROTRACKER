@@ -55,20 +55,38 @@ uint8_t StepSequencer::constrainValue(int value) {
     return (uint8_t)value;
 }
 
-uint64_t StepSequencer::calculateDurationUs(uint8_t gatePercent) const {
-    const uint64_t MIN_GATE = 120;
-    uint64_t halfStep = _stepDurationUs / 2;
+uint64_t StepSequencer::calculateDurationUs(uint8_t value) const {
+    if (value == 0) return 0;
 
-    if (gatePercent == 0) return MIN_GATE;
-    if (gatePercent <= 32) return ((uint64_t)gatePercent * halfStep) / 32;
-    if (gatePercent <= 96) return halfStep + ((uint64_t)(gatePercent - 32) * halfStep);
-    if (gatePercent == 97) return 128 * halfStep;
-    if (gatePercent == 98) return 256 * halfStep;
-    return 512 * halfStep;
+    // Linear mapping of gate value to a multiplier of _stepDurationUs.
+    // Numerator represents 128th fractions of the step to allow exact integers.
+    uint64_t num;
+    if (value <= 24) {
+        // 1 to 24 maps to step/128 to step/4 (32/128)
+        num = (value * 32) / 24;
+    } else if (value <= 48) {
+        // 25 to 48 maps to step/4 to 2*step (256/128)
+        num = 32 + (value - 24) * 224 / 24;
+    } else if (value <= 72) {
+        // 49 to 72 maps to 2*step to 8*step (1024/128)
+        num = 256 + (value - 48) * 32;
+    } else if (value <= 96) {
+        // 73 to 96 maps to 8*step to 32*step (4096/128)
+        num = 1024 + (value - 72) * 128;
+    } else if (value == 97) {
+        num = 5120;   // 40 * step
+    } else if (value == 98) {
+        num = 6656;   // 52 * step
+    } else {
+        num = 8192;   // 64 * step
+    }
+
+    return (_stepDurationUs * num) / 128;
 }
 
 uint16_t StepSequencer::getGateDurationMs(uint8_t gatePercent) const {
-    return (uint16_t)(calculateDurationUs(gatePercent) / 1000);
+    uint64_t us = calculateDurationUs(gatePercent);
+    return (uint16_t)(us / 1000);
 }
 
 uint16_t StepSequencer::getCurrentDACValue() {
@@ -116,10 +134,15 @@ void StepSequencer::onStep() {
     // ===== GATE QUEUE =====
     if (_gateQueue) {
         uint64_t oldGateOffTimestamp = 0;
-        
+        uint8_t gatePercent = _pattern->getGateLength(stepIndex);
+
         if (_resetOnStep) {
-            while (!_gateQueue->isEmpty()) {
-                _gateQueue->pop();
+            // Only clear the queue if the new step actually has a gate.
+            // If gate is 0 or 1, allow the previous gate to bleed through.
+            if (gatePercent > 1) {
+                while (!_gateQueue->isEmpty()) {
+                    _gateQueue->pop();
+                }
             }
         } else {
             while (!_gateQueue->isEmpty()) {
@@ -132,9 +155,8 @@ void StepSequencer::onStep() {
                 _gateQueue->pop();
             }
         }
-        
-        if (triggers) {
-            uint8_t gatePercent = _pattern->getGateLength(stepIndex);
+
+        if (triggers && gatePercent > 0) {
             uint64_t gateDuration = calculateDurationUs(gatePercent);
             
             _gateQueue->push(stepStartTime, GateEvent::GATE_ON);
@@ -172,6 +194,7 @@ void StepSequencer::onStep() {
                 _gateQueue->push(gateOffTime, GateEvent::GATE_OFF);
             }
         } else if (!_resetOnStep && oldGateOffTimestamp > 0) {
+            // Keep mode: if gate is off or probability missed, preserve the old gate off
             _gateQueue->push(oldGateOffTimestamp, GateEvent::GATE_OFF);
         }
     }

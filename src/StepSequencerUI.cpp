@@ -76,7 +76,13 @@ void StepSequencerUI::drawStep(uint8_t step, int x, int y) {
             }
             case 2: sprintf(valStr, "%02d", _pattern->getDecay(step)); break;
             case 1: sprintf(valStr, "%02d", _pattern->getProbability(step)); break;
-            case 3: sprintf(valStr, "%02d", _pattern->getGateLength(step)); break;
+            case 3: 
+                if (_pattern->getGateLength(step) == 0) {
+                    sprintf(valStr, "OF");
+                } else {
+                    sprintf(valStr, "%02d", _pattern->getGateLength(step)); 
+                }
+                break;
             case 4: sprintf(valStr, "%02d", _pattern->getAttack(step)); break;
             case 5: sprintf(valStr, "%02d", _pattern->getRatchet(step)); break;
             case 7: sprintf(valStr, "%02d", _pattern->getMicrotiming(step)); break;
@@ -112,6 +118,21 @@ void StepSequencerUI::drawStep(uint8_t step, int x, int y) {
             for (uint8_t i = 0; i < ratchet; i++) {
                 _display.drawPixel(dotX + 2 * i, dotY, _display.colorBlack());
             }
+        }
+
+        // Cut the bottom left corner for CV-only steps (Gate length = 0)
+        if (_pattern->getGateLength(step) == 0) {
+            int bx = x;
+            int by = y + RECT_HEIGHT - 1;
+            
+            // Remove 3 most left pixels from bottom row
+            _display.drawPixel(bx, by, _display.colorBlack());
+            _display.drawPixel(bx + 1, by, _display.colorBlack());
+            _display.drawPixel(bx + 2, by, _display.colorBlack());
+            
+            // Remove 3 lowest pixels from most left column
+            _display.drawPixel(bx, by - 1, _display.colorBlack());
+            _display.drawPixel(bx, by - 2, _display.colorBlack());
         }
     } else {
         int smallRectW = 6;
@@ -310,7 +331,6 @@ void StepSequencerUI::handleButtons() {
         _copiedStep.microtiming = _pattern->getMicrotiming(_selectedStep);
         _copiedStep.hasData = true;
         _copyTriggered = true;
-        // Optional: add visual feedback (e.g., flash or draw a small indicator)
     }
 
     // ---- PASTE or TOGGLE: joystick button ----
@@ -325,7 +345,6 @@ void StepSequencerUI::handleButtons() {
             _pattern->setAttack(_selectedStep, _copiedStep.attack);
             _pattern->setRatchet(_selectedStep, _copiedStep.ratchet);
             _pattern->setMicrotiming(_selectedStep, _copiedStep.microtiming);
-            // (Keep _copiedStep.hasData = true to allow multiple pastes)
         } else {
             // No copy: toggle ON/OFF
             bool newState = !_pattern->getOn(_selectedStep);
@@ -373,7 +392,7 @@ uint8_t StepSequencerUI::constrainValue(int value) {
 
 void StepSequencerUI::enter() {
     resetEncoderTracking();
-    // Clear copy buffer on entry (optional, but good practice)
+    // Clear copy buffer on entry
     _copiedStep.hasData = false;
     _copyTriggered = false;
 }
@@ -497,10 +516,15 @@ void StepSequencerUI::drawPopup() {
             }
             break;
         case 3:
-            snprintf(value, sizeof(value), "%02d%%", _popupValue);
-            if (_sequencer) {
-                snprintf(line1, sizeof(line1), "%u ms",
-                         _sequencer->getGateDurationMs((uint8_t)_popupValue));
+            if (_popupValue == 0) {
+                snprintf(value, sizeof(value), "OFF");
+                snprintf(line1, sizeof(line1), "GATE OFF");
+            } else {
+                snprintf(value, sizeof(value), "%02d%%", _popupValue);
+                if (_sequencer) {
+                    snprintf(line1, sizeof(line1), "%u ms",
+                             _sequencer->getGateDurationMs((uint8_t)_popupValue));
+                }
             }
             break;
         case 5:
