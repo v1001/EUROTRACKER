@@ -41,6 +41,80 @@ void SongSequencer::begin(bool reset) {
     // Removed xTaskCreatePinnedToCore
 }
 
+void SongSequencer::advanceToNextStep() {
+    // Protect the array access from concurrent UI edits
+    portENTER_CRITICAL(&_songMutex);
+    
+    int nextStep = _currentPlayStep;
+    if (_songState == STATE_PLAY_SONG) {
+        nextStep = nextStep + 1;
+        if (nextStep >= _songData.getLength()) {
+            nextStep = 0;
+        }
+    }
+    
+    if(nextStep != _currentPlayStep){
+        updateSequencersFromStep(nextStep, true);
+    }else{
+        updateSequencersFromStep(nextStep, false);
+    }
+    
+    _currentPlayStep = nextStep;
+    _stepTicksRemaining = _songData.getStepLengthInTicks(_currentPlayStep);
+    
+    portEXIT_CRITICAL(&_songMutex);
+}
+
+bool SongSequencer::insertStep(int selectedStep) {
+    portENTER_CRITICAL(&_songMutex);
+    
+    bool success = _songData.insertStep(selectedStep);
+    
+    // If we inserted before the currently playing step, shift the playback pointer
+    if (success && _songState != STATE_STOP && selectedStep <= _currentPlayStep) {
+        _currentPlayStep++;
+        // The StepPattern pointers don't need updating because the linked list 
+        // keeps the nodes at the same physical memory addresses.
+    }
+    
+    portEXIT_CRITICAL(&_songMutex);
+    
+    if (success) _songUI.setSaveFlag();
+    return success;
+}
+
+bool SongSequencer::deleteStep(int selectedStep) {
+    if (_songState != STATE_STOP && selectedStep == _currentPlayStep) return false; 
+
+    portENTER_CRITICAL(&_songMutex);
+    
+    bool success = _songData.deleteStep(selectedStep);
+    
+    if (success && _songState != STATE_STOP && selectedStep < _currentPlayStep) {
+        _currentPlayStep--;
+    }
+    
+    portEXIT_CRITICAL(&_songMutex);
+    
+    if (success) _songUI.setSaveFlag();
+    return success;
+}
+
+bool SongSequencer::cloneStep(int selectedStep) {
+    portENTER_CRITICAL(&_songMutex);
+    
+    bool success = _songData.cloneStep(selectedStep);
+    
+    if (success && _songState != STATE_STOP && selectedStep < _currentPlayStep) {
+        _currentPlayStep++;
+    }
+    
+    portEXIT_CRITICAL(&_songMutex);
+    
+    if (success) _songUI.setSaveFlag();
+    return success;
+}
+
 void SongSequencer::initSequencers() {
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = new StepSequencer(_display, _userInput);
@@ -199,25 +273,6 @@ void SongSequencer::processOutputs() {
             }
         }
     }
-}
-
-void SongSequencer::advanceToNextStep() {
-    int nextStep = _currentPlayStep;
-    if (_songState == STATE_PLAY_SONG) {
-        nextStep = nextStep + 1;
-        if (nextStep >= _songData.getLength()) {
-            nextStep = 0;
-        }
-    }
-    
-    if(nextStep != _currentPlayStep){
-        updateSequencersFromStep(nextStep, true);
-    }else{
-        updateSequencersFromStep(nextStep, false);
-    }
-    
-    _currentPlayStep = nextStep;
-    _stepTicksRemaining = _songData.getStepLengthInTicks(_currentPlayStep);
 }
 
 void SongSequencer::updateSequencersFromStep(int step, bool resetPosition) {

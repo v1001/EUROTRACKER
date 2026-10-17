@@ -2,20 +2,21 @@
 #include "MainMenu.h"
 #include "PatternMenu.h"
 #include "TrackMenu.h"
-#include "SongData.h"
+#include "SongEditMenu.h" // NEW
 
 TrackerApp::TrackerApp(DisplayManager& display, UserInput& userInput, OutputHandler& outputHandler)
     : _display(display), _userInput(userInput), _outputHandler(outputHandler),
       _songSequencer(display, userInput, outputHandler), _currentUIState(STATE_SONG_UI),
       _sequencer(nullptr), _editingTrack(0), _editingStep(0), _lastStateTransitionTime(0),
-      _quarterNoteTimeUs(0), _lastSaveTime(0), // Initialize _lastSaveTime
-      _mainMenu(nullptr), _patternMenu(nullptr) {
+      _quarterNoteTimeUs(0), _lastSaveTime(0),
+      _mainMenu(nullptr), _patternMenu(nullptr), _trackMenu(nullptr), _songEditMenu(nullptr) {
 }
 
 TrackerApp::~TrackerApp() {
     delete static_cast<MainMenu*>(_mainMenu);
     delete static_cast<PatternMenu*>(_patternMenu);
     delete static_cast<TrackMenu*>(_trackMenu);
+    delete static_cast<SongEditMenu*>(_songEditMenu);
 }
 
 const char* TrackerApp::getDividerText(uint16_t divider) {
@@ -51,6 +52,7 @@ void TrackerApp::begin(bool reset) {
     _mainMenu = new MainMenu(_display, _userInput, _outputHandler, this);
     _patternMenu = new PatternMenu(_display, _userInput, _songSequencer);
     _trackMenu = new TrackMenu(_display, _userInput, _songSequencer);
+    _songEditMenu = new SongEditMenu(_display, _userInput, _songSequencer);
 }
 
 void TrackerApp::update(uint64_t quarterNoteTimeUs) {
@@ -100,6 +102,13 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
                 static_cast<TrackMenu*>(_trackMenu)->draw();
             }
             break;
+            
+        case STATE_SONG_EDIT_MENU:
+            if (_songEditMenu) {
+                static_cast<SongEditMenu*>(_songEditMenu)->update();
+                static_cast<SongEditMenu*>(_songEditMenu)->draw();
+            }
+            break;
     }
 
     unsigned long now = millis();
@@ -111,6 +120,14 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
         int track = _songSequencer.getSelectedTrack();
         int step = _songSequencer.getSelectedStep();
         enterSequencerUI(track, step);
+        return;
+    }
+    
+    // Song UI -> Song Edit Menu (Long press Encoder B)
+    if (_currentUIState == STATE_SONG_UI && _userInput.encoder_b_button.press_duration > 500) {
+        _lastStateTransitionTime = now;
+        _currentUIState = STATE_SONG_EDIT_MENU;
+        if (_songEditMenu) static_cast<SongEditMenu*>(_songEditMenu)->enter(_songSequencer.getSelectedStep());
         return;
     }
 
@@ -214,6 +231,18 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
         _currentUIState = STATE_SONG_UI;
         _songSequencer.resetEncoderTracking();
         return;
+    }
+    
+    // Song Edit Menu -> Song UI
+    if (_currentUIState == STATE_SONG_EDIT_MENU && _songEditMenu) {
+        auto* menu = static_cast<SongEditMenu*>(_songEditMenu);
+        if (menu->shouldExit() || _userInput.save_button.just_pressed) {
+            _lastStateTransitionTime = now;
+            menu->clearExitFlag();
+            _currentUIState = STATE_SONG_UI;
+            _songSequencer.resetEncoderTracking();
+            return;
+        }
     }
 }
 

@@ -10,10 +10,11 @@
 // Forward declarations
 class MainMenu;
 class PatternMenu;
+class TrackMenu;
+class SongEditMenu;
 
 class TrackerApp {
 public:
-    // ... (Public methods remain unchanged) ...
     TrackerApp(DisplayManager& display, UserInput& userInput, OutputHandler& outputHandler);
     ~TrackerApp();
 
@@ -65,7 +66,8 @@ private:
         STATE_SEQUENCER_UI,
         STATE_MAIN_MENU,
         STATE_PATTERN_MENU,
-        STATE_TRACK_MENU
+        STATE_TRACK_MENU,
+        STATE_SONG_EDIT_MENU // NEW
     };
 
     DisplayManager& _display;
@@ -86,6 +88,7 @@ private:
     void* _mainMenu;
     void* _patternMenu;
     void* _trackMenu;
+    void* _songEditMenu; // NEW
 
     void enterSequencerUI(int track, int step);
     void exitSequencerUI();

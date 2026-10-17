@@ -60,17 +60,35 @@ const SongData::Divider SongData::_dividers[NUM_DIVIDERS] = {
 };
 
 // ----------------------------------------------------------------------
-// Constructor / Destructor / init / clear
+// Constructor / Destructor / Linked List Helpers
 // ----------------------------------------------------------------------
-SongData::SongData() : _length(0), _hasCopiedData(false) {
-    for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < MAX_SONG_LENGTH; step++) {
-            _dividerIndices[track][step] = 4;  // Default to x1
-        }
-    }
+SongData::SongData() : _length(0), _head(nullptr), _tail(nullptr), _hasCopiedData(false) {
 }
 
 SongData::~SongData() {
+}
+
+void SongData::rebuildStepPointers() {
+    SongStep* curr = _head;
+    for (uint32_t i = 0; i < _length; i++) {
+        _steps[i] = curr;
+        curr = curr->next;
+    }
+}
+
+SongData::SongStep* SongData::getFreeNode() {
+    // Find a node in the pool that is not currently in the active _steps array
+    for (int i = 0; i < MAX_SONG_LENGTH; i++) {
+        bool isUsed = false;
+        for (uint32_t j = 0; j < _length; j++) {
+            if (_steps[j] == &_nodePool[i]) {
+                isUsed = true;
+                break;
+            }
+        }
+        if (!isUsed) return &_nodePool[i];
+    }
+    return nullptr;
 }
 
 void SongData::init() {
@@ -82,25 +100,124 @@ void SongData::init() {
         _quantizers[i].generateChromatic(0, 4095, 61);
     }
 
-    for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < MAX_SONG_LENGTH; step++) {
-            _patterns[track][step].init(PATTERN_STEPS);
-            for (int s = 0; s < PATTERN_STEPS; s++) {
-                _patterns[track][step].setOn(s, false);
-                _patterns[track][step].setCV(s, 50);
-                _patterns[track][step].setProbability(s, 99);
-                _patterns[track][step].setGateLength(s, 8);
-                _patterns[track][step].setDecay(s, 0);
-                _patterns[track][step].setAttack(s, 0);
-                _patterns[track][step].setRatchet(s, 1);
-            }
-            _dividerIndices[track][step] = 4;
-        }
+    // 1. Link the ENTIRE pool sequentially for initialization
+    for (int i = 0; i < MAX_SONG_LENGTH - 1; i++) {
+        _nodePool[i].next = &_nodePool[i + 1];
     }
+    _nodePool[MAX_SONG_LENGTH - 1].next = nullptr;
+
+    // 2. Initialize the data for all nodes in the pool
+    SongStep* curr = &_nodePool[0];
+    for (int i = 0; i < MAX_SONG_LENGTH; i++) {
+        for (int track = 0; track < NUM_TRACKS; track++) {
+            curr->dividers[track] = 4; // Default x1
+            curr->patterns[track].init(PATTERN_STEPS);
+            for (int s = 0; s < PATTERN_STEPS; s++) {
+                curr->patterns[track].setOn(s, false);
+                curr->patterns[track].setCV(s, 50);
+                curr->patterns[track].setProbability(s, 99);
+                curr->patterns[track].setGateLength(s, 8);
+                curr->patterns[track].setDecay(s, 0);
+                curr->patterns[track].setAttack(s, 0);
+                curr->patterns[track].setRatchet(s, 1);
+                curr->patterns[track].setMicrotiming(s, 0);
+            }
+        }
+        curr = curr->next;
+    }
+
+    // 3. Set up the active linked list boundaries (truncate to default length)
+    _head = &_nodePool[0];
+    _tail = &_nodePool[DEFAULT_SONG_LENGTH - 1];
+    _tail->next = nullptr; 
+
+    rebuildStepPointers();
 }
 
 void SongData::clear() {
     init();
+}
+
+// ----------------------------------------------------------------------
+// Structural Edits
+// ----------------------------------------------------------------------
+bool SongData::insertStep(int index) {
+    if (_length >= MAX_SONG_LENGTH) return false;
+    SongStep* newNode = getFreeNode();
+    if (!newNode) return false;
+
+    // Initialize the new node
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        newNode->dividers[t] = 4;
+        newNode->patterns[t].init(PATTERN_STEPS);
+    }
+
+    if (index < 0) {
+        // Insert at head
+        newNode->next = _head;
+        _head = newNode;
+        if (_length == 0) _tail = newNode;
+    } else if (index >= (int)_length - 1) {
+        // Insert at tail
+        newNode->next = nullptr;
+        if (_tail) _tail->next = newNode;
+        _tail = newNode;
+        if (_length == 0) _head = newNode;
+    } else {
+        // Insert in middle
+        newNode->next = _steps[index]->next;
+        _steps[index]->next = newNode;
+    }
+
+    _length++;
+    rebuildStepPointers();
+    return true;
+}
+
+bool SongData::deleteStep(int index) {
+    if (_length <= 1 || index < 0 || index >= (int)_length) return false;
+
+    SongStep* toDelete = _steps[index];
+
+    if (index == 0) {
+        _head = _head->next;
+    } else {
+        _steps[index - 1]->next = toDelete->next;
+    }
+
+    if (toDelete == _tail) {
+        _tail = _steps[index - 1];
+    }
+
+    _length--;
+    rebuildStepPointers();
+    return true;
+}
+
+bool SongData::cloneStep(int index) {
+    if (_length >= MAX_SONG_LENGTH || index < 0 || index >= (int)_length) return false;
+    SongStep* newNode = getFreeNode();
+    if (!newNode) return false;
+
+    // Copy data
+    for (int t = 0; t < NUM_TRACKS; t++) {
+        newNode->dividers[t] = _steps[index]->dividers[t];
+        newNode->patterns[t] = _steps[index]->patterns[t];
+    }
+
+    // Link it after the specified index
+    if (index >= (int)_length - 1) {
+        newNode->next = nullptr;
+        if (_tail) _tail->next = newNode;
+        _tail = newNode;
+    } else {
+        newNode->next = _steps[index]->next;
+        _steps[index]->next = newNode;
+    }
+
+    _length++;
+    rebuildStepPointers();
+    return true;
 }
 
 // ----------------------------------------------------------------------
@@ -128,11 +245,21 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
         file.close(); return false;
     }
     if (_length > MAX_SONG_LENGTH) _length = MAX_SONG_LENGTH;
+    if (_length == 0) _length = 1; // Safety fallback
+
+    // Setup the linked list based on the loaded length
+    _head = &_nodePool[0];
+    for (uint32_t i = 0; i < _length - 1; i++) {
+        _nodePool[i].next = &_nodePool[i + 1];
+    }
+    _tail = &_nodePool[_length - 1];
+    _tail->next = nullptr;
+    rebuildStepPointers();
 
     // ---- Dividers ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < _length; step++) {
-            if (file.read(&_dividerIndices[track][step], 1) != 1) {
+        for (uint32_t step = 0; step < _length; step++) {
+            if (file.read(&_steps[step]->dividers[track], 1) != 1) {
                 file.close(); return false;
             }
         }
@@ -140,15 +267,15 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
 
     // ---- Pattern data ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < _length; step++) {
-            _patterns[track][step].init(PATTERN_STEPS);
+        for (uint32_t step = 0; step < _length; step++) {
+            _steps[step]->patterns[track].init(PATTERN_STEPS);
             for (int s = 0; s < PATTERN_STEPS; s++) {
                 uint16_t cv;
                 if (file.read((uint8_t*)&cv, 2) != 2) { file.close(); return false; }
                 uint8_t flags;
                 if (file.read(&flags, 1) != 1) { file.close(); return false; }
-                _patterns[track][step].setOn(s, (flags & 0x01) != 0);
-                _patterns[track][step].setCV(s, cv);
+                _steps[step]->patterns[track].setOn(s, (flags & 0x01) != 0);
+                _steps[step]->patterns[track].setCV(s, cv);
 
                 uint8_t prob, gate, decay, attack, ratchet, micro;
                 if (file.read(&prob, 1) != 1 || file.read(&gate, 1) != 1 ||
@@ -156,23 +283,23 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
                     file.read(&ratchet, 1) != 1 || file.read(&micro, 1) != 1) {
                     file.close(); return false;
                 }
-                _patterns[track][step].setProbability(s, prob);
-                _patterns[track][step].setGateLength(s, gate);
-                _patterns[track][step].setDecay(s, decay);
-                _patterns[track][step].setAttack(s, attack);
-                _patterns[track][step].setRatchet(s, ratchet);
-                _patterns[track][step].setMicrotiming(s, micro);
+                _steps[step]->patterns[track].setProbability(s, prob);
+                _steps[step]->patterns[track].setGateLength(s, gate);
+                _steps[step]->patterns[track].setDecay(s, decay);
+                _steps[step]->patterns[track].setAttack(s, attack);
+                _steps[step]->patterns[track].setRatchet(s, ratchet);
+                _steps[step]->patterns[track].setMicrotiming(s, micro);
             }
         }
     }
 
     // ---- Pattern lengths ----
     for (int track = 0; track < NUM_TRACKS; track++) {
-        for (int step = 0; step < _length; step++) {
+        for (uint32_t step = 0; step < _length; step++) {
             uint8_t numSteps;
             if (file.read(&numSteps, 1) != 1) { file.close(); return false; }
             if (numSteps > StepPattern::MAX_STEPS) numSteps = StepPattern::MAX_STEPS;
-            _patterns[track][step].setNumSteps(numSteps);
+            _steps[step]->patterns[track].setNumSteps(numSteps);
         }
     }
 
@@ -247,7 +374,6 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
 }
 
 bool SongData::save(const char* filename, StepSequencer** sequencers) {
-    // Size check (unchanged logic, now against LittleFS)
     size_t needed = 0;
     needed += 4 + 1 + 3;
     needed += sizeof(_length);
@@ -287,14 +413,14 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     // ---- Dividers ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         for (uint32_t step = 0; step < _length; step++) {
-            w.put(&_dividerIndices[track][step], 1);
+            w.put(&_steps[step]->dividers[track], 1);
         }
     }
 
     // ---- Pattern data ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         for (uint32_t step = 0; step < _length; step++) {
-            const StepPattern& pattern = _patterns[track][step];
+            const StepPattern& pattern = _steps[step]->patterns[track];
             for (int s = 0; s < PATTERN_STEPS; s++) {
                 uint16_t cv = pattern.getCV(s) & 0x0FFF;
                 w.put(cv);
@@ -313,7 +439,7 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     // ---- Pattern lengths ----
     for (int track = 0; track < NUM_TRACKS; track++) {
         for (uint32_t step = 0; step < _length; step++) {
-            uint8_t numSteps = _patterns[track][step].getNumSteps();
+            uint8_t numSteps = _steps[step]->patterns[track].getNumSteps();
             w.put(numSteps);
         }
     }
@@ -380,9 +506,6 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     return true;
 }
 
-// ----------------------------------------------------------------------
-// File utilities (unchanged)
-// ----------------------------------------------------------------------
 void SongData::deleteFile(const char* filename) {
     if (LittleFS.exists(filename)) {
         LittleFS.remove(filename);
@@ -393,70 +516,87 @@ bool SongData::exists(const char* filename) {
     return LittleFS.exists(filename);
 }
 
-// ----------------------------------------------------------------------
-// Getters / Setters (all methods used elsewhere)
-// ----------------------------------------------------------------------
 void SongData::setLength(uint32_t length) {
     if (length >= 1 && length <= MAX_SONG_LENGTH) {
+        if (length > _length) {
+            // Growing the song length. Just extend the tail.
+            for (uint32_t i = _length; i < length; i++) {
+                SongStep* newNode = getFreeNode();
+                if (newNode) {
+                    for (int t = 0; t < NUM_TRACKS; t++) {
+                        newNode->dividers[t] = 4;
+                        newNode->patterns[t].init(PATTERN_STEPS);
+                    }
+                    newNode->next = nullptr;
+                    _tail->next = newNode;
+                    _tail = newNode;
+                }
+            }
+        } else if (length < _length) {
+            // Shrinking the song length. Truncate the list.
+            _tail = _steps[length - 1];
+            _tail->next = nullptr;
+        }
         _length = length;
+        rebuildStepPointers();
     }
 }
 
 void SongData::setDividerIndex(int track, int step, uint8_t index) {
-    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < _length) {
-        if (index >= 0 && index < NUM_DIVIDERS) {
-            _dividerIndices[track][step] = index;
+    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < (int)_length) {
+        if (index < NUM_DIVIDERS) {
+            _steps[step]->dividers[track] = index;
         }
     }
 }
 
 void SongData::rotatePattern(int track, int step, int increment) {
-    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < _length) {
-        _patterns[track][step].rotate(increment);
+    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < (int)_length) {
+        _steps[step]->patterns[track].rotate(increment);
     }
 }
 
 void SongData::copyPattern(int track, int step) {
-    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < _length) {
-        _copiedPattern = _patterns[track][step];
-        _copiedDivider = _dividerIndices[track][step];
+    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < (int)_length) {
+        _copiedPattern = _steps[step]->patterns[track];
+        _copiedDivider = _steps[step]->dividers[track];
         _hasCopiedData = true;
     }
 }
 
 void SongData::pastePattern(int track, int step) {
-    if (_hasCopiedData && track >= 0 && track < NUM_TRACKS && step >= 0 && step < _length) {
-        _patterns[track][step] = _copiedPattern;
-        _dividerIndices[track][step] = _copiedDivider;
+    if (_hasCopiedData && track >= 0 && track < NUM_TRACKS && step >= 0 && step < (int)_length) {
+        _steps[step]->patterns[track] = _copiedPattern;
+        _steps[step]->dividers[track] = _copiedDivider;
     }
 }
 
 void SongData::randomizePattern(int track, int step) {
-    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < _length) {
-        _patterns[track][step].randomize();
+    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < (int)_length) {
+        _steps[step]->patterns[track].randomize();
     }
 }
 
 void SongData::clearPattern(int track, int step) {
-    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < _length) {
+    if (track >= 0 && track < NUM_TRACKS && step >= 0 && step < (int)_length) {
         for (int s = 0; s < PATTERN_STEPS; s++) {
-            _patterns[track][step].setOn(s, false);
-            _patterns[track][step].setCV(s, 50);
-            _patterns[track][step].setProbability(s, 99);
-            _patterns[track][step].setGateLength(s, 8);
-            _patterns[track][step].setDecay(s, 0);
+            _steps[step]->patterns[track].setOn(s, false);
+            _steps[step]->patterns[track].setCV(s, 50);
+            _steps[step]->patterns[track].setProbability(s, 99);
+            _steps[step]->patterns[track].setGateLength(s, 8);
+            _steps[step]->patterns[track].setDecay(s, 0);
         }
     }
 }
 
 uint32_t SongData::getStepLengthInTicks(int step) const {
-    if (step < 0 || step >= _length) return 0;
+    if (step < 0 || step >= (int)_length) return 0;
 
     uint32_t maxTicks = 0;
     for (int track = 0; track < NUM_TRACKS; track++) {
-        const StepPattern& pattern = _patterns[track][step];
+        const StepPattern& pattern = _steps[step]->patterns[track];
         int patternLength = pattern.getNumSteps();
-        uint16_t dividerValue = _dividers[_dividerIndices[track][step]].value;
+        uint16_t dividerValue = _dividers[_steps[step]->dividers[track]].value;
         uint32_t ticks = patternLength * dividerValue;
         if (ticks > maxTicks) maxTicks = ticks;
     }
@@ -464,13 +604,13 @@ uint32_t SongData::getStepLengthInTicks(int step) const {
 }
 
 int SongData::getStepLongestPatternIndex(int step) const {
-    if (step < 0 || step >= _length) return -1;
+    if (step < 0 || step >= (int)_length) return -1;
     uint32_t maxTicks = 0;
     int longestTrack = -1;
     for (int track = 0; track < NUM_TRACKS; track++) {
-        const StepPattern& pattern = _patterns[track][step];
+        const StepPattern& pattern = _steps[step]->patterns[track];
         int patternLength = pattern.getNumSteps();
-        uint16_t dividerValue = _dividers[_dividerIndices[track][step]].value;
+        uint16_t dividerValue = _dividers[_steps[step]->dividers[track]].value;
         uint32_t ticks = patternLength * dividerValue;
         if (ticks > maxTicks) {
             maxTicks = ticks;

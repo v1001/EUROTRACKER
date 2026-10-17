@@ -30,7 +30,7 @@ public:
     void processClockTick(uint16_t tickCount);
     void processOutputs();
     
-    // Sequencer mode management (called from main.cpp)
+    // Sequencer mode management
     void enterSequencerMode(int track, int step);
     void exitSequencerMode();
     void scheduleSequencerMode(int track, int step);
@@ -41,11 +41,17 @@ public:
     SongState getSongState() const { return _songState; }
     int getSelectedTrack() const { return _songUI.getSelectedTrack(); }
     int getSelectedStep() const { return _songUI.getSelectedStep(); }
+    int getPlayingStep() const { return _currentPlayStep; }
     bool isInSequencerMode() const {return _sequencerModeActive; }
 
     // Expose save flags for Core 0 autosave logic
     bool needsSave() const { return _songUI.needsSave(); }
     void clearSaveFlag() { _songUI.clearSaveFlag(); }
+
+    // Structural Edits
+    bool insertStep(int selectedStep);
+    bool deleteStep(int selectedStep);
+    bool cloneStep(int selectedStep);
 
     void saveCurrentProject();
     void loadCurrentProject();
@@ -79,7 +85,8 @@ private:
     GateQueue _gateQueues[6];
     CVQueue _cvQueues[4];
 
-    // Note: Removed _saveTaskHandle, saveTaskWrapper, saveTask, and _lastSaveTime
+    // Mutex to protect SongData array shifts from the ISR
+    portMUX_TYPE _songMutex = portMUX_INITIALIZER_UNLOCKED;
     
     volatile SongState _songState;
     int _currentPlayStep;
@@ -93,8 +100,8 @@ private:
     void advanceToNextStep();
     void handleStateMachine();
 
-    bool _pendingStart;      // Flag for synchronized start
-    bool _pendingSequencer;  // Flag for switching to sequencer mode
+    bool _pendingStart;
+    bool _pendingSequencer;
     bool _sequencerModeActive;
 
     bool _syncStart;
