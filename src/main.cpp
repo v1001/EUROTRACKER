@@ -121,7 +121,7 @@ void setup() {
     
     // Draw text centered vertically
     display.printCentered("Euro", 4);
-    display.printCentered("Tracker", 24);
+    display.printCentered("Tracker", 20);
     display.setTextSize(TEXT_SMALL);
     display.printCentered("v1.0.0", 48);
     
@@ -145,7 +145,6 @@ void setup() {
 
     // 4. Initialize inputs (The 1-second delay above replaces the old delay(500))
     userInput.begin();
-    userInput.calibrateJoystick();
     
     outputHandler.setAllDigitalOutputs(false);
     for (int ch = 0; ch < 4; ch++) {

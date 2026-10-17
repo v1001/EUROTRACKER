@@ -71,7 +71,7 @@ void StepSequencerUI::drawStep(uint8_t step, int x, int y) {
             case 0: { // CV mode
                 uint16_t raw = _pattern->getCV(step);
                 const char* displayText = getQuantizedNoteNameOrCV(raw);
-                strcpy(valStr, displayText);
+                snprintf(valStr, sizeof(valStr), "%s", displayText);
                 break;
             }
             case 2: sprintf(valStr, "%02d", _pattern->getDecay(step)); break;
@@ -318,38 +318,10 @@ void StepSequencerUI::handleEncoders() {
 }
 
 void StepSequencerUI::handleButtons() {
-    // ---- COPY: hold Encoder B > 500ms ----
-    if (_userInput.encoder_b_button.press_duration > 500 && !_copyTriggered) {
-        // Copy current selected step data
-        _copiedStep.on = _pattern->getOn(_selectedStep);
-        _copiedStep.cv = _pattern->getCV(_selectedStep);
-        _copiedStep.probability = _pattern->getProbability(_selectedStep);
-        _copiedStep.gateLength = _pattern->getGateLength(_selectedStep);
-        _copiedStep.decay = _pattern->getDecay(_selectedStep);
-        _copiedStep.attack = _pattern->getAttack(_selectedStep);
-        _copiedStep.ratchet = _pattern->getRatchet(_selectedStep);
-        _copiedStep.microtiming = _pattern->getMicrotiming(_selectedStep);
-        _copiedStep.hasData = true;
-        _copyTriggered = true;
-    }
-
-    // ---- PASTE or TOGGLE: joystick button ----
+    // ---- Toggle Step: joystick button ----
     if (_userInput.joystick_button.just_released) {
-        if (_copiedStep.hasData) {
-            // Paste copied data onto current step (overwrite all parameters)
-            _pattern->setOn(_selectedStep, _copiedStep.on);
-            _pattern->setCV(_selectedStep, _copiedStep.cv);
-            _pattern->setProbability(_selectedStep, _copiedStep.probability);
-            _pattern->setGateLength(_selectedStep, _copiedStep.gateLength);
-            _pattern->setDecay(_selectedStep, _copiedStep.decay);
-            _pattern->setAttack(_selectedStep, _copiedStep.attack);
-            _pattern->setRatchet(_selectedStep, _copiedStep.ratchet);
-            _pattern->setMicrotiming(_selectedStep, _copiedStep.microtiming);
-        } else {
-            // No copy: toggle ON/OFF
-            bool newState = !_pattern->getOn(_selectedStep);
-            _pattern->setOn(_selectedStep, newState);
-        }
+        bool newState = !_pattern->getOn(_selectedStep);
+        _pattern->setOn(_selectedStep, newState);
     }
     
     if (_userInput.encoder_a_button.just_pressed) {

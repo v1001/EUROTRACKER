@@ -52,6 +52,7 @@ private:
     long _lastEncPosA;
     long _lastEncPosB;
     unsigned long _lastNavTime;
+    unsigned long _lastJoystickMoveTime;
     bool _wasCentered;
 };
 

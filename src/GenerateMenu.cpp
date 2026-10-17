@@ -19,6 +19,7 @@ void GenerateMenu::enter() {
     _lastEncPosA = _userInput.encoder_a.position;
     _lastEncPosB = _userInput.encoder_b.position;
     _lastNavTime = 0;
+    _lastJoystickMoveTime = 0; // Initialize
     _wasCentered = true;
     loadCurrentValue();
 }
@@ -51,18 +52,19 @@ void GenerateMenu::handleNavigation() {
     else if (_userInput.joystick.y_position < -30) dy = 1;
 
     if (dy != 0) {
-        if (_wasCentered || (now - _lastNavTime) > 50) {
+        // Use _lastJoystickMoveTime for the repeat delay
+        if (_wasCentered || (now - _lastJoystickMoveTime) > 50) {
             int newIndex = _selectedIndex + dy;
             if (newIndex >= 0 && newIndex <= ITEM_EXIT) {
                 _selectedIndex = newIndex;
-                _lastNavTime = now;
+                _lastJoystickMoveTime = now; // Update move time
             }
             _wasCentered = false;
         }
     } else {
         _wasCentered = true;
     }
-    _lastNavTime = now;
+    _lastNavTime = now; // Kept for the 100ms loop throttle
 }
 
 void GenerateMenu::handleEditing() {

@@ -239,6 +239,7 @@ void SongSequencer::handleStateMachine() {
         _songState = STATE_STOP;
         _currentStepTickCounter = 0;
         _pendingStart = false;
+        _pendingSequencer = false; // <-- Add this line
         _songUI.setSaveFlag();
     } else if (_userInput.save_button.just_pressed) {
         if (_songState == STATE_STOP) {
