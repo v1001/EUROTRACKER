@@ -8,7 +8,8 @@ TrackerApp::TrackerApp(DisplayManager& display, UserInput& userInput, OutputHand
     : _display(display), _userInput(userInput), _outputHandler(outputHandler),
       _songSequencer(display, userInput, outputHandler), _currentUIState(STATE_SONG_UI),
       _sequencer(nullptr), _editingTrack(0), _editingStep(0), _lastStateTransitionTime(0),
-      _mainMenu(nullptr), _patternMenu(nullptr), _quarterNoteTimeUs(0) {
+      _quarterNoteTimeUs(0), _lastSaveTime(0), // Initialize _lastSaveTime
+      _mainMenu(nullptr), _patternMenu(nullptr) {
 }
 
 TrackerApp::~TrackerApp() {
@@ -54,6 +55,16 @@ void TrackerApp::begin(bool reset) {
 
 void TrackerApp::update(uint64_t quarterNoteTimeUs) {
     _quarterNoteTimeUs = quarterNoteTimeUs;
+
+    // ===== AUTOSAVE =====
+    if (_songSequencer.getSongState() == SongSequencer::STATE_STOP &&
+        _songSequencer.needsSave() &&
+        (millis() - _lastSaveTime > 15000)) {
+        
+        _lastSaveTime = millis();
+        _songSequencer.clearSaveFlag();
+        _songSequencer.saveCurrentProject();
+    }
 
     switch (_currentUIState) {
         case STATE_SONG_UI:

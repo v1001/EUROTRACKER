@@ -13,6 +13,7 @@ class PatternMenu;
 
 class TrackerApp {
 public:
+    // ... (Public methods remain unchanged) ...
     TrackerApp(DisplayManager& display, UserInput& userInput, OutputHandler& outputHandler);
     ~TrackerApp();
 
@@ -79,6 +80,8 @@ private:
     uint64_t _lastStateTransitionTime;
     uint64_t _quarterNoteTimeUs;
     static const uint64_t STATE_TRANSITION_COOLDOWN_MS = 500;
+
+    uint32_t _lastSaveTime;
 
     void* _mainMenu;
     void* _patternMenu;

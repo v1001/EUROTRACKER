@@ -43,6 +43,10 @@ public:
     int getSelectedStep() const { return _songUI.getSelectedStep(); }
     bool isInSequencerMode() const {return _sequencerModeActive; }
 
+    // Expose save flags for Core 0 autosave logic
+    bool needsSave() const { return _songUI.needsSave(); }
+    void clearSaveFlag() { _songUI.clearSaveFlag(); }
+
     void saveCurrentProject();
     void loadCurrentProject();
     void saveCurrentProjectToFile(const char* filename);
@@ -75,9 +79,7 @@ private:
     GateQueue _gateQueues[6];
     CVQueue _cvQueues[4];
 
-    TaskHandle_t _saveTaskHandle;
-    static void saveTaskWrapper(void* parameter);
-    void saveTask();
+    // Note: Removed _saveTaskHandle, saveTaskWrapper, saveTask, and _lastSaveTime
     
     volatile SongState _songState;
     int _currentPlayStep;
@@ -95,11 +97,7 @@ private:
     bool _pendingSequencer;  // Flag for switching to sequencer mode
     bool _sequencerModeActive;
 
-    unsigned long _lastSaveTime;
-    static const unsigned long SAVE_TIMEOUT_MS = 5000;  // 5 seconds
-
     bool _syncStart;
-
 };
 
 #endif

@@ -4,10 +4,10 @@ const char* SongSequencer::PROJECT_FILENAME = "/current_project.song";
 
 SongSequencer::SongSequencer(DisplayManager& display, UserInput& userInput, OutputHandler& outputHandler)
     : _display(display), _userInput(userInput), _outputHandler(outputHandler),
-      _songUI(display, userInput, _songData),_sequencerModeActive(false), _lastSaveTime(0),
+      _songUI(display, userInput, _songData), _sequencerModeActive(false),
       _songState(STATE_STOP), _currentPlayStep(0), _currentStepTickCounter(0), _stepTicksRemaining(0),
       _pendingStart(false), _pendingSequencer(false), _nextPlayStep(0), _openSequencerTrack(0),
-      _gateQueues{}, _cvQueues{}, _lastDACValues{0, 0, 0, 0} {;
+      _gateQueues{}, _cvQueues{}, _lastDACValues{0, 0, 0, 0} {
     
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = nullptr;
@@ -17,25 +17,6 @@ SongSequencer::SongSequencer(DisplayManager& display, UserInput& userInput, Outp
 SongSequencer::~SongSequencer() {
     for (int i = 0; i < NUM_TRACKS; i++) {
         delete _sequencers[i];
-    }
-}
-
-void SongSequencer::saveTaskWrapper(void* parameter) {
-    SongSequencer* instance = (SongSequencer*)parameter;
-    instance->saveTask();
-}
-
-void SongSequencer::saveTask() {
-    const TickType_t interval = pdMS_TO_TICKS(15000);  // 15 seconds
-    
-    while (1) {
-        vTaskDelay(interval);
-        
-        // Check if save is needed and we're in STOP state
-        if (_songState == STATE_STOP && _songUI.needsSave()) {
-            _songUI.clearSaveFlag();
-            saveCurrentProject();
-        }
     }
 }
 
@@ -57,16 +38,7 @@ void SongSequencer::begin(bool reset) {
         loadCurrentProject();
     }
 
-    // Create save task on Core 0
-    xTaskCreatePinnedToCore(
-        saveTaskWrapper,
-        "SaveTask",
-        4096,
-        this,
-        1,
-        &_saveTaskHandle,
-        0  // Core 0
-    );
+    // Removed xTaskCreatePinnedToCore
 }
 
 void SongSequencer::initSequencers() {
@@ -94,6 +66,7 @@ void SongSequencer::initSequencers() {
     }
     updateSequencersFromStep(_currentPlayStep, true);
 }
+
 
 void SongSequencer::update() {
     handleStateMachine();
