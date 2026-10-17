@@ -102,20 +102,52 @@ void setup() {
     pinMode(25, INPUT);
     randomSeed(analogRead(25));
 
+    // 1. Initialize I2C and physical display
     if (!i2cGatekeeper.begin(1000000)) {
         while (1);
     }
-
     i2cGatekeeper.displayInit();
     i2cGatekeeper.displayClear();
 
+    // 2. Initialize framebuffers
     display.begin();
 
-    userInput.begin();
-    delay(500);
-    userInput.calibrateJoystick();
-    outputHandler.setAllDigitalOutputs(false);
+    // ==========================================
+    // 3. DRAW AND PUSH SPLASH SCREEN IMMEDIATELY
+    // ==========================================
+    display.clear();
+    display.setTextSize(TEXT_MEDIUM);
+    display.setTextColor(display.colorWhite());
+    
+    // Draw text centered vertically
+    display.printCentered("Euro", 4);
+    display.printCentered("Tracker", 24);
+    display.setTextSize(TEXT_SMALL);
+    display.printCentered("v1.0.0", 48);
+    
+    // Swap to read buffer so it's ready for transmission
+    display.swapBuffers();
+    
+    // Push directly to the physical screen in 32-byte chunks
+    uint8_t* fb = display.getFramebuffer();
+    for (uint8_t page = 0; page < 8; page++) {
+        for (uint8_t col = 0; col < 128; col += 32) {
+            i2cGatekeeper.displayWritePage(page, col, &fb[page * 128 + col], 32);
+        }
+    }
+    
+    // Clear the update flag so the main loop() doesn't immediately resend it
+    display.clearUpdateFlag();
+    
+    // Hold the splash screen for exactly 1 second
+    delay(1000);
+    // ==========================================
 
+    // 4. Initialize inputs (The 1-second delay above replaces the old delay(500))
+    userInput.begin();
+    userInput.calibrateJoystick();
+    
+    outputHandler.setAllDigitalOutputs(false);
     for (int ch = 0; ch < 4; ch++) {
         outputHandler.setDACChannel(ch, 0);
     }
@@ -123,8 +155,20 @@ void setup() {
     pinMode(userInput.save_button.pin, INPUT_PULLUP);
     bool resetRequested = (digitalRead(userInput.save_button.pin) == LOW);
 
+    // 5. Initialize Filesystem and App
     if (!LittleFS.begin(true)) {
-        display.print("Memory Error");
+        display.clear();
+        display.printCentered("MEMORY ERROR", 30);
+        display.swapBuffers();
+        
+        // Push error screen
+        uint8_t* err_fb = display.getFramebuffer();
+        for (uint8_t page = 0; page < 8; page++) {
+            for (uint8_t col = 0; col < 128; col += 32) {
+                i2cGatekeeper.displayWritePage(page, col, &err_fb[page * 128 + col], 32);
+            }
+        }
+        while (1) { delay(100); } // Halt on error
     } else {
         trackerApp.begin(resetRequested);
         startTimer();

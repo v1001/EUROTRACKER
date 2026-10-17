@@ -2,8 +2,6 @@
 #include "DisplayGraphics.h"
 
 DisplayManager::DisplayManager() {
-    _drawBuffer = nullptr;
-    _readBuffer = nullptr;
     _isInitialized = false;
     _needsUpdate.store(false);
     _textSize = TEXT_SMALL;
@@ -18,43 +16,25 @@ DisplayManager::~DisplayManager() {
 }
 
 bool DisplayManager::begin() {
-    _drawBuffer = new uint8_t[DISPLAY_FRAMEBUFFER_SIZE];
-    _readBuffer = new uint8_t[DISPLAY_FRAMEBUFFER_SIZE];
-    
-    if (!_drawBuffer || !_readBuffer) {
-        _isInitialized = false;
-        return false;
-    }
-    
     memset(_drawBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
     memset(_readBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
     _isInitialized = true;
     
-    // Immediately flag an update so the blank screen is pushed
+    // Force the first blank frame to be sent immediately
     _needsUpdate.store(true);
     return true;
 }
 
 void DisplayManager::end() {
-    delete[] _drawBuffer;
-    delete[] _readBuffer;
-    _drawBuffer = nullptr;
-    _readBuffer = nullptr;
     _isInitialized = false;
 }
 
 void DisplayManager::clear() {
-    if (!_drawBuffer) return;
     memset(_drawBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
 }
 
 void DisplayManager::swapBuffers() {
-    if (!_drawBuffer || !_readBuffer) return;
-    
-    // Copy the fully rendered frame to the read buffer
     memcpy(_readBuffer, _drawBuffer, DISPLAY_FRAMEBUFFER_SIZE);
-    
-    // Signal Core 1 that a new frame is ready
     _needsUpdate.store(true, std::memory_order_release);
 }
 

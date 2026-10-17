@@ -104,9 +104,12 @@ void I2CGatekeeper::displayInit() {
 }
 
 void I2CGatekeeper::displayClear() {
-    setPageColumn(0, 0);           // Set starting address
-    uint8_t blank[1024] = {0};     // Prepare the full zero buffer
-    writeData(blank, 1024);        // Send 1024 zeros to clear GDDRAM
+    uint8_t blank[32] = {0};
+    for (uint8_t page = 0; page < 8; page++) {
+        for (uint8_t col = 0; col < 128; col += 32) {
+            displayWritePage(page, col, blank, 32);
+        }
+    }
 }
 
 void I2CGatekeeper::displayWritePage(uint8_t page, uint8_t col_start, const uint8_t* data, uint8_t len) {
