@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <string.h>
+#include <atomic> // Added for thread-safe cross-core flag
 
 // Display dimensions
 #define DISPLAY_WIDTH  128
@@ -22,21 +23,23 @@ public:
     DisplayManager();
     ~DisplayManager();
 
-    // Allocate framebuffer (no hardware init)
+    // Allocate framebuffers (no hardware init)
     bool begin();
     void end();
-    bool isReady() const { return _framebuffer != nullptr; }
+    bool isReady() const { return _drawBuffer != nullptr && _readBuffer != nullptr; }
 
-    // Framebuffer access for I2C/SPI task
-    uint8_t* getFramebuffer() { return _framebuffer; }
+    // Framebuffer access for I2C/SPI task (returns the completed frame)
+    uint8_t* getFramebuffer() { return _readBuffer; }
     uint16_t getFramebufferSize() const { return DISPLAY_FRAMEBUFFER_SIZE; }
 
-    // Update flag (set by UI, cleared by hardware task)
-    void update() { _needsUpdate = true; }
-    bool needsUpdate() const { return _needsUpdate; }
-    void clearUpdateFlag() { _needsUpdate = false; }
+    // Swap the completed draw buffer to the read buffer for I2C transmission
+    void swapBuffers();
+    
+    // Update flag (set by swapBuffers, cleared by hardware task)
+    bool needsUpdate() const { return _needsUpdate.load(std::memory_order_acquire); }
+    void clearUpdateFlag() { _needsUpdate.store(false, std::memory_order_release); }
 
-    // Clear entire framebuffer
+    // Clear entire draw framebuffer
     void clear();
 
     // Drawing primitives
@@ -76,8 +79,9 @@ public:
     uint16_t colorBlack() const { return FB_BLACK; }
 
 private:
-    uint8_t* _framebuffer;
-    volatile bool _needsUpdate;
+    uint8_t* _drawBuffer;
+    uint8_t* _readBuffer;
+    std::atomic<bool> _needsUpdate;
 
     // Text state
     uint8_t _textSize;

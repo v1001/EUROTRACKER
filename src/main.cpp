@@ -8,12 +8,9 @@
 #include "SongData.h"
 #include <LittleFS.h>
 
-
-// Clock pin: input when clock source is external, output when internal
 const uint8_t CLOCK_PIN = 5;
 static volatile bool clockOutputState = false;
 
-// Global instances
 DisplayManager display;
 UserInput userInput(10);
 SyncTimer syncTimer(CLOCK_PIN);
@@ -25,14 +22,12 @@ TaskHandle_t uiTaskHandle = NULL;
 uint64_t lastStateChangeTime = 0;
 const uint64_t STATE_CHANGE_COOLDOWN = 500;
 
-// Timer restart flag
 volatile bool timerNeedsRestart = false;
 
-// Display update state machine
 uint8_t currentPage = 0;
 uint8_t currentBlock = 0;
 const uint8_t BLOCKS_PER_PAGE = 4;
-const uint8_t BLOCK_WIDTH = 32;  // 128 / 4 = 32 columns per block
+const uint8_t BLOCK_WIDTH = 32;
 
 uint64_t getQuarterNoteTime() {
     if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
@@ -46,7 +41,6 @@ uint64_t getQuarterNoteTime() {
 void IRAM_ATTR onTimerTick(uint16_t tickCount) {
     trackerApp.processClockTick(tickCount);
 
-    // Clock output when running from internal clock
     if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
         uint8_t idx = trackerApp.getClockOutDivider();
         if (idx >= SongData::getNumDividers()) idx = SongData::getNumDividers() - 1;
@@ -64,7 +58,6 @@ void startTimer() {
     if (trackerApp.getClockSource() == GlobalSettings::SOURCE_INTERNAL) {
         float frequencyHz = trackerApp.getInternalBPMFloat() / 60.0f;
         syncTimer.beginStandalone(192, onTimerTick, frequencyHz);
-
         pinMode(CLOCK_PIN, OUTPUT);
         clockOutputState = false;
         digitalWrite(CLOCK_PIN, LOW);
@@ -76,6 +69,7 @@ void startTimer() {
 
 void uiTask(void* parameter) {
     while (1) {
+        // Wait until Core 1 finishes sending the previous frame
         while (display.needsUpdate()) {
             vTaskDelay(pdMS_TO_TICKS(1));
         }
@@ -85,7 +79,8 @@ void uiTask(void* parameter) {
 
         trackerApp.update(getQuarterNoteTime());
 
-        display.update();
+        // Signal that the frame is ready and swap buffers
+        display.swapBuffers();
 
         static GlobalSettings::ClockSource lastClockSource = trackerApp.getClockSource();
         static uint16_t lastInternalBPM = trackerApp.getInternalBPM();
@@ -151,8 +146,9 @@ void loop() {
 
     outputHandler.setAllDigitalOutputs();
 
+    // Use the safe, atomic needsUpdate() check
     if (display.needsUpdate()) {
-        uint8_t* framebuffer = display.getFramebuffer();
+        uint8_t* framebuffer = display.getFramebuffer(); // Points to _readBuffer now
 
         uint8_t col_start = currentBlock * BLOCK_WIDTH;
         const uint8_t* blockData = &framebuffer[currentPage * DISPLAY_WIDTH + col_start];
@@ -164,7 +160,7 @@ void loop() {
             currentPage++;
             if (currentPage >= 8) {
                 currentPage = 0;
-                display.clearUpdateFlag();
+                display.clearUpdateFlag(); // Atomically sets _needsUpdate to false
             }
         }
     }

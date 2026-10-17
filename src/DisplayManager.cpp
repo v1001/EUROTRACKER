@@ -1,15 +1,11 @@
 #include "DisplayManager.h"
 #include "DisplayGraphics.h"
 
-// Standard ASCII 5x7 font (from Adafruit GFX library)
-
-// ----------------------------------------------------------------------
-// Constructor & Destructor
-// ----------------------------------------------------------------------
 DisplayManager::DisplayManager() {
-    _framebuffer = nullptr;
+    _drawBuffer = nullptr;
+    _readBuffer = nullptr;
     _isInitialized = false;
-    _needsUpdate = false;
+    _needsUpdate.store(false);
     _textSize = TEXT_SMALL;
     _textColor = FB_WHITE;
     _textBgColor = FB_BLACK;
@@ -21,51 +17,62 @@ DisplayManager::~DisplayManager() {
     end();
 }
 
-// ----------------------------------------------------------------------
-// Framebuffer management
-// ----------------------------------------------------------------------
 bool DisplayManager::begin() {
-    _framebuffer = new uint8_t[DISPLAY_FRAMEBUFFER_SIZE];
-    if (!_framebuffer) {
+    _drawBuffer = new uint8_t[DISPLAY_FRAMEBUFFER_SIZE];
+    _readBuffer = new uint8_t[DISPLAY_FRAMEBUFFER_SIZE];
+    
+    if (!_drawBuffer || !_readBuffer) {
         _isInitialized = false;
         return false;
     }
-    memset(_framebuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
-    clear();
+    
+    memset(_drawBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
+    memset(_readBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
     _isInitialized = true;
-    _needsUpdate = true;
+    
+    // Immediately flag an update so the blank screen is pushed
+    _needsUpdate.store(true);
     return true;
 }
 
 void DisplayManager::end() {
-    delete[] _framebuffer;
-    _framebuffer = nullptr;
+    delete[] _drawBuffer;
+    delete[] _readBuffer;
+    _drawBuffer = nullptr;
+    _readBuffer = nullptr;
     _isInitialized = false;
 }
 
 void DisplayManager::clear() {
-    if (!_framebuffer) return;
-    memset(_framebuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
+    if (!_drawBuffer) return;
+    memset(_drawBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
 }
 
-// ----------------------------------------------------------------------
-// Pixel access
-// ----------------------------------------------------------------------
+void DisplayManager::swapBuffers() {
+    if (!_drawBuffer || !_readBuffer) return;
+    
+    // Copy the fully rendered frame to the read buffer
+    memcpy(_readBuffer, _drawBuffer, DISPLAY_FRAMEBUFFER_SIZE);
+    
+    // Signal Core 1 that a new frame is ready
+    _needsUpdate.store(true, std::memory_order_release);
+}
+
 void DisplayManager::setPixel(int16_t x, int16_t y, uint8_t color) {
-    if (!_framebuffer) return;
+    if (!_drawBuffer) return;
     if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
     uint16_t idx = (y / 8) * DISPLAY_WIDTH + x;   // page * 128 + column
     uint8_t bit = 1 << (y % 8);
-    if (color) _framebuffer[idx] |= bit;
-    else       _framebuffer[idx] &= ~bit;
+    if (color) _drawBuffer[idx] |= bit;
+    else       _drawBuffer[idx] &= ~bit;
 }
 
 uint8_t DisplayManager::getPixel(int16_t x, int16_t y) const {
-    if (!_framebuffer) return 0;
+    if (!_drawBuffer) return 0;
     if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return 0;
     uint16_t idx = (y / 8) * DISPLAY_WIDTH + x;
     uint8_t bit = 1 << (y % 8);
-    return (_framebuffer[idx] & bit) ? 1 : 0;
+    return (_drawBuffer[idx] & bit) ? 1 : 0;
 }
 
 void DisplayManager::drawPixel(int16_t x, int16_t y, uint16_t color) {
@@ -159,7 +166,7 @@ void DisplayManager::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1
 // Text rendering using FreeMono9pt7b font
 // ----------------------------------------------------------------------
 void DisplayManager::drawChar(int16_t x, int16_t y, unsigned char c) {
-    if (!_framebuffer) return;
+    if (!_drawBuffer) return;
     if (c < 32 || c > 126) return;
 
     uint8_t idx = c - 32;
@@ -202,7 +209,7 @@ void DisplayManager::applyAlignment(const char* text, int16_t& x, int16_t y, Tex
 }
 
 void DisplayManager::print(const char* text) {
-    if (!_framebuffer || !text) return;
+    if (!_drawBuffer || !text) return;
     int16_t charWidth = 6 * _textSize;
     int16_t charHeight = 8 * _textSize;
 
