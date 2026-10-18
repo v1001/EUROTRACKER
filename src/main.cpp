@@ -123,7 +123,7 @@ void setup() {
     display.printCentered("Euro", 4);
     display.printCentered("Tracker", 20);
     display.setTextSize(TEXT_SMALL);
-    display.printCentered("v1.0.0", 48);
+    display.printCentered("v1.1.0", 48);
     
     // Swap to read buffer so it's ready for transmission
     display.swapBuffers();

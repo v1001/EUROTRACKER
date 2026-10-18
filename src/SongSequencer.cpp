@@ -480,38 +480,6 @@ void SongSequencer::drawPerformanceUI() {
     _songUI.setPlaybackProgress(100*(float)_currentStepTickCounter/(float)_stepTicksRemaining);
     _songUI.draw(&_perfState);
 
-    // 2. Overlay Track Headers (Invert for FX, M for Mute)
-    const int trackX[6] = {20, 38, 56, 74, 92, 110};
-    for (int i = 0; i < 6; i++) {
-        int x = trackX[i] + 4; // Text position from SongUI
-        bool enabled = _perfState.trackEnabled[i];
-        bool muted = _perfState.trackMuted[i];
-
-        if (muted) {
-            // Mute: Black background, "M", hide patterns
-            _display.fillRect(trackX[i], 0, 16, 10, _display.colorBlack());
-            _display.setTextColor(_display.colorWhite());
-            char label[4];
-            snprintf(label, sizeof(label), "M%d", i + 1);
-            _display.printAt(label, x, 0, ALIGN_LEFT);
-            
-            // Hide patterns for muted track
-            _display.fillRect(trackX[i], 11, 16, 43, _display.colorBlack());
-        } else if (enabled) {
-            // FX Enabled: Inverted background
-            _display.fillRect(trackX[i], 0, 16, 10, _display.colorWhite());
-            _display.setTextColor(_display.colorBlack());
-            char label[4];
-            snprintf(label, sizeof(label), "T%d", i + 1);
-            _display.printAt(label, x, 0, ALIGN_LEFT);
-            _display.setTextColor(_display.colorWhite());
-        }
-    }
-
-    // 3. Selection Frame
-    int selX = trackX[_perfState.selectedTrack];
-    _display.drawRect(selX - 2, 0, 20, 10, _display.colorWhite());
-
     // 4. Staircase Animation (Replaces Play/Stop icons)
     _display.drawStaircase(2, 0, _perfAnimFrame);
 

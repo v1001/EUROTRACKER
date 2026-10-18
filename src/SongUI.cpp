@@ -51,7 +51,7 @@ void SongUI::draw(PerformanceState* perf) {
         
         if (enabled) {
             // Inverted background for FX enabled tracks
-            _display.fillRect(_trackXPositions[i] - 1, titleY, 16, 8, _display.colorWhite());
+            _display.fillRect(_trackXPositions[i] - 1, titleY - 1, 18, 9, _display.colorWhite());
             _display.setTextColor(_display.colorBlack());
             _display.printAt(label, _trackXPositions[i] + 1, titleY, ALIGN_LEFT);
             _display.setTextColor(_display.colorWhite());
