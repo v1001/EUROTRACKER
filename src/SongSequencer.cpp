@@ -395,6 +395,8 @@ void SongSequencer::enterPerformanceMode() {
     _perfLastEncAPos = _userInput.encoder_a.position;
     _perfLastEncBPos = _userInput.encoder_b.position;
     _perfPopupText[0] = '\0';
+
+    _userInput.encoder_b_button.just_pressed = false;
 }
 
 void SongSequencer::exitPerformanceMode() {
@@ -430,19 +432,19 @@ void SongSequencer::updatePerformanceUI() {
     }
 
     // 3. Buttons
-    if (_userInput.encoder_a_button.just_released) {
+    if (_userInput.encoder_a_button.just_pressed) {
         _perfState.trackEnabled[_perfState.selectedTrack] = !_perfState.trackEnabled[_perfState.selectedTrack];
         char buf[32];
         snprintf(buf, sizeof(buf), "T%d FX: %s", _perfState.selectedTrack + 1, _perfState.trackEnabled[_perfState.selectedTrack] ? "ON" : "OFF");
         showPerfPopup(buf);
     }
     
-    if (_userInput.encoder_b_button.just_released) {
+    if (_userInput.encoder_b_button.just_pressed) {
         _perfState.globalCvHold = !_perfState.globalCvHold;
         showPerfPopup(_perfState.globalCvHold ? "HOLD: ON" : "HOLD: OFF");
     }
     
-    if (_userInput.joystick_button.just_released) {
+    if (_userInput.joystick_button.just_pressed) {
         _perfState.trackMuted[_perfState.selectedTrack] = !_perfState.trackMuted[_perfState.selectedTrack];
         char buf[32];
         snprintf(buf, sizeof(buf), "T%d %s", _perfState.selectedTrack + 1, _perfState.trackMuted[_perfState.selectedTrack] ? "MUTED" : "UNMUTED");
@@ -476,7 +478,7 @@ void SongSequencer::drawPerformanceUI() {
     // 1. Draw the base song UI
     _songUI.setCurrentPlayingStep(_currentPlayStep);
     _songUI.setPlaybackProgress(100*(float)_currentStepTickCounter/(float)_stepTicksRemaining);
-    _songUI.draw();
+    _songUI.draw(&_perfState);
 
     // 2. Overlay Track Headers (Invert for FX, M for Mute)
     const int trackX[6] = {20, 38, 56, 74, 92, 110};
@@ -529,7 +531,8 @@ void SongSequencer::drawPerformanceUI() {
         strcat(status, rnd);
     }
     if (_perfState.globalProbReduce > 0) {
-        char p[8]; snprintf(p, sizeof(p), "PRB%d ", _perfState.globalProbReduce * 25);
+        // Invert the display to show actual probability, not the reduction amount
+        char p[8]; snprintf(p, sizeof(p), "PRB%d ", (4 - _perfState.globalProbReduce) * 25);
         strcat(status, p);
     }
     

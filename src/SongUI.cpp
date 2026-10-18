@@ -37,6 +37,7 @@ void SongUI::draw(PerformanceState* perf) {
     _display.setTextColor(_display.colorWhite());
     
     // Header - track titles
+    int titleY = isPerf ? 2 : 0; // Track titles move down 2 pixels in perf mode
     for (int i = 0; i < NUM_TRACKS; i++) {
         bool muted = (isPerf && perf->trackMuted[i]);
         bool enabled = (isPerf && perf->trackEnabled[i]);
@@ -49,16 +50,20 @@ void SongUI::draw(PerformanceState* perf) {
         }
         
         if (enabled) {
-            // FX Enabled: Inverted background
-            _display.fillRect(_trackXPositions[i] - 1, 1, 16, 8, _display.colorWhite());
+            // Inverted background for FX enabled tracks
+            _display.fillRect(_trackXPositions[i] - 1, titleY, 16, 8, _display.colorWhite());
             _display.setTextColor(_display.colorBlack());
-            _display.printAt(label, _trackXPositions[i] + 1, 0, ALIGN_LEFT);
+            _display.printAt(label, _trackXPositions[i] + 1, titleY, ALIGN_LEFT);
             _display.setTextColor(_display.colorWhite());
         } else {
-            _display.printAt(label, _trackXPositions[i] + 2, 0, ALIGN_LEFT);
+            _display.printAt(label, _trackXPositions[i] + 2, titleY, ALIGN_LEFT);
         }
     }
-    _display.drawLine(0, 10, 128, 10, _display.colorWhite());
+    
+    // Hide the horizontal line in performance mode
+    if (!isPerf) {
+        _display.drawLine(0, 10, 128, 10, _display.colorWhite());
+    }
     
     // Draw song steps data
     for (int row = 0; row < ROWS_PER_PAGE; row++) {
@@ -68,13 +73,11 @@ void SongUI::draw(PerformanceState* perf) {
         int y = 14 + row * 10;
         SongData::SongStep* step = _songData.getStep(stepNum);
         
-        // Show progress bar for currently playing step, otherwise show step number or loop count
         if (stepNum == _currentPlayingStep && _playbackProgress > 0 && _playbackProgress < 100) {
             drawProgressBar(2, y, 16, 8, _playbackProgress);
         } else {
             char stepText[5];
             if (step->loopTarget != nullptr) {
-                // Display as X + 1
                 sprintf(stepText, "L%d", step->loopCount + 1); 
             } else {
                 sprintf(stepText, "%02d", stepNum + 1);
@@ -83,7 +86,7 @@ void SongUI::draw(PerformanceState* perf) {
         }
         
         for (int col = 0; col < NUM_TRACKS; col++) {
-            // Skip drawing patterns for muted tracks
+            // Hide patterns for muted tracks
             if (isPerf && perf->trackMuted[col]) {
                 continue;
             }
@@ -107,10 +110,9 @@ void SongUI::draw(PerformanceState* perf) {
         SongData::SongStep* step = _songData.getStep(stepNum);
         if (step->loopTarget != nullptr) {
             int targetIdx = _songData.getStepIndex(step->loopTarget);
-            int yCurrent = 14 + row * 10 + 4; // Middle of the current row
+            int yCurrent = 14 + row * 10 + 4;
             
             if (targetIdx >= _scrollOffset && targetIdx < _scrollOffset + ROWS_PER_PAGE) {
-                // Target is on screen
                 int targetRow = targetIdx - _scrollOffset;
                 int yTarget = 14 + targetRow * 10 + 4;
                 
@@ -118,16 +120,12 @@ void SongUI::draw(PerformanceState* perf) {
                 _display.drawLine(0, yTarget, 2, yTarget, _display.colorWhite());
                 _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
             } else if (targetIdx < _scrollOffset) {
-                // Target is above view
                 _display.drawLine(0, 10, 0, yCurrent, _display.colorWhite());
                 _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
-                // Arrow pointing up
                 _display.drawLine(0, 10, 2, 12, _display.colorWhite());
             } else {
-                // Target is below view
                 _display.drawLine(0, yCurrent, 0, 53, _display.colorWhite());
                 _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
-                // Arrow pointing down
                 _display.drawLine(0, 53, 2, 51, _display.colorWhite());
             }
         }
@@ -135,9 +133,9 @@ void SongUI::draw(PerformanceState* perf) {
     
     // Cursor / Selection Frame
     if (isPerf) {
-        // Performance Mode: Frame around selected track header
+        // Performance Mode: Frame around selected track header, 1 pixel higher
         int selX = _trackXPositions[perf->selectedTrack] - 2;
-        _display.drawRect(selX, 0, 20, 10, _display.colorWhite());
+        _display.drawRect(selX, 0, 20, 11, _display.colorWhite());
     } else {
         // Normal Mode: Frame around selected cell
         if (_cursorCol >= 1 && _cursorCol <= NUM_TRACKS) {

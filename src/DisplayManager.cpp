@@ -251,25 +251,15 @@ void DisplayManager::drawHourglass(int x, int y) {
 }
 
 void DisplayManager::drawStaircase(int16_t x, int16_t y, uint8_t frame) {
-    // 1. Draw the trapezoid outline
-    // Top width: 4 (from x+2 to x+6)
-    // Bottom width: 8 (from x to x+8)
-    // Height: 8 pixels
-    drawLine(x + 2, y, x + 6, y, FB_WHITE);
-    drawLine(x, y + 7, x + 8, y + 7, FB_WHITE);
-    drawLine(x + 2, y, x, y + 7, FB_WHITE);
-    drawLine(x + 6, y, x + 8, y + 7, FB_WHITE);
-
-    // 2. Draw 3 moving lines inside
+    // Moving horizontal lines.
     for (int i = 0; i < 3; i++) {
         // Calculate Y position based on frame and line index
         int y_pos = (frame + i * 2) % 7;
         
-        // Calculate the width of the trapezoid at this Y position
-        // Width goes from 4 (at y_pos=0) to 8 (at y_pos=6)
+        // Width interpolates from 4 (top) to 8 (bottom)
         int w = 4 + (y_pos * 4) / 6;
         
-        // Center the line
+        // Center the line inside the imaginary trapezoid
         int start_x = x + 2 - (y_pos * 2) / 6;
         int end_x = start_x + w - 1;
         
