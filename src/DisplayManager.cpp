@@ -19,8 +19,6 @@ bool DisplayManager::begin() {
     memset(_drawBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
     memset(_readBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
     _isInitialized = true;
-    
-    // Force the first blank frame to be sent immediately
     _needsUpdate.store(true);
     return true;
 }
@@ -41,7 +39,7 @@ void DisplayManager::swapBuffers() {
 void DisplayManager::setPixel(int16_t x, int16_t y, uint8_t color) {
     if (!_drawBuffer) return;
     if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
-    uint16_t idx = (y / 8) * DISPLAY_WIDTH + x;   // page * 128 + column
+    uint16_t idx = (y / 8) * DISPLAY_WIDTH + x;
     uint8_t bit = 1 << (y % 8);
     if (color) _drawBuffer[idx] |= bit;
     else       _drawBuffer[idx] &= ~bit;
@@ -59,9 +57,6 @@ void DisplayManager::drawPixel(int16_t x, int16_t y, uint16_t color) {
     setPixel(x, y, color ? 1 : 0);
 }
 
-// ----------------------------------------------------------------------
-// Drawing primitives (all use setPixel)
-// ----------------------------------------------------------------------
 void DisplayManager::drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
     int16_t dx = abs(x1 - x0);
     int16_t dy = abs(y1 - y0);
@@ -142,9 +137,6 @@ void DisplayManager::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1
     }
 }
 
-// ----------------------------------------------------------------------
-// Text rendering using FreeMono9pt7b font
-// ----------------------------------------------------------------------
 void DisplayManager::drawChar(int16_t x, int16_t y, unsigned char c) {
     if (!_drawBuffer) return;
     if (c < 32 || c > 126) return;
@@ -198,7 +190,6 @@ void DisplayManager::print(const char* text) {
             _cursorX = 0;
             _cursorY += charHeight;
         } else {
-            // Wrap before drawing if needed
             if (_cursorX + charWidth > DISPLAY_WIDTH) {
                 _cursorX = 0;
                 _cursorY += charHeight;
@@ -232,7 +223,7 @@ void DisplayManager::clearLine(uint8_t lineNumber) {
 }
 
 // ----------------------------------------------------------------------
-// Special symbols (using existing draw primitives)
+// Special symbols
 // ----------------------------------------------------------------------
 void DisplayManager::drawQuarterNote(int x, int y) {
     fillCircle(x + 1, y, 1, FB_WHITE);
@@ -257,6 +248,33 @@ void DisplayManager::drawHourglass(int x, int y) {
     drawLine(x + 4, y + 4, x, y + 8, FB_WHITE);
     drawLine(x + 8, y, x + 4, y + 4, FB_WHITE);
     drawLine(x + 4, y + 4, x + 8, y + 8, FB_WHITE);
+}
+
+void DisplayManager::drawStaircase(int16_t x, int16_t y, uint8_t frame) {
+    // 1. Draw the trapezoid outline
+    // Top width: 4 (from x+2 to x+6)
+    // Bottom width: 8 (from x to x+8)
+    // Height: 8 pixels
+    drawLine(x + 2, y, x + 6, y, FB_WHITE);
+    drawLine(x, y + 7, x + 8, y + 7, FB_WHITE);
+    drawLine(x + 2, y, x, y + 7, FB_WHITE);
+    drawLine(x + 6, y, x + 8, y + 7, FB_WHITE);
+
+    // 2. Draw 3 moving lines inside
+    for (int i = 0; i < 3; i++) {
+        // Calculate Y position based on frame and line index
+        int y_pos = (frame + i * 2) % 7;
+        
+        // Calculate the width of the trapezoid at this Y position
+        // Width goes from 4 (at y_pos=0) to 8 (at y_pos=6)
+        int w = 4 + (y_pos * 4) / 6;
+        
+        // Center the line
+        int start_x = x + 2 - (y_pos * 2) / 6;
+        int end_x = start_x + w - 1;
+        
+        drawLine(start_x, y + y_pos, end_x, y + y_pos, FB_WHITE);
+    }
 }
 
 void DisplayManager::drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t percent, uint16_t color) {

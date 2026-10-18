@@ -9,6 +9,23 @@
 #include "StepSequencer.h"
 #include "EventQueue.h"
 
+struct PerformanceState {
+    bool active = false;
+    int8_t selectedTrack = 0;
+    
+    // Per-track settings
+    bool trackEnabled[6] = {false}; // Inverted header, enables global FX
+    bool trackMuted[6] = {false};   // "M1" instead of "T1", hides patterns
+    int16_t cvOffset[6] = {0};      // Per-track transpose (Encoder B rotate)
+    
+    // Global modifiers (apply ONLY to tracks where trackEnabled == true)
+    bool globalCvHold = false;      // Encoder B click
+    int8_t globalStepRepeat = 0;    // Joystick Right (0=Off, 1=1/4, 2=1/2, 3=1/1)
+    int8_t globalGateHold = 0;      // Joystick Left (0=Off, 1=2x, 2=3x, 3=4x)
+    int8_t globalRandomize = 0;     // Joystick Up (0=Off, 1=Low, 2=Med, 3=High)
+    int8_t globalProbReduce = 0;    // Joystick Down (0=Off, 1=75%, 2=50%, 3=25%)
+};
+
 class SongSequencer {
 public:
     // Song playback states
@@ -36,6 +53,14 @@ public:
     void scheduleSequencerMode(int track, int step);
     StepSequencer* getSequencer(int track);
     void setSyncStart(bool enabled) { _syncStart = enabled; }
+    
+    // Performance Mode
+    void enterPerformanceMode();
+    void exitPerformanceMode();
+    bool isPerformanceMode() const { return _perfState.active; }
+    void updatePerformanceUI();
+    void drawPerformanceUI();
+    PerformanceState& getPerformanceState() { return _perfState; }
     
     // Getters
     SongState getSongState() const { return _songState; }
@@ -86,6 +111,17 @@ private:
     SongUI _songUI;
     StepSequencer* _sequencers[NUM_TRACKS];
     uint8_t _stepLoopCounters[MAX_SONG_LENGTH];
+
+    // Performance Mode State
+    PerformanceState _perfState;
+    unsigned long _lastPerfAnimTime;
+    uint8_t _perfAnimFrame;
+    long _perfLastEncAPos;
+    long _perfLastEncBPos;
+    char _perfPopupText[32];
+    unsigned long _perfPopupTime;
+
+    void showPerfPopup(const char* text);
 
     // Event queues
     GateQueue _gateQueues[6];

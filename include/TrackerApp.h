@@ -67,7 +67,8 @@ private:
         STATE_MAIN_MENU,
         STATE_PATTERN_MENU,
         STATE_TRACK_MENU,
-        STATE_SONG_EDIT_MENU // NEW
+        STATE_SONG_EDIT_MENU,
+        STATE_PERFORMANCE_MODE // NEW
     };
 
     DisplayManager& _display;
@@ -88,7 +89,7 @@ private:
     void* _mainMenu;
     void* _patternMenu;
     void* _trackMenu;
-    void* _songEditMenu; // NEW
+    void* _songEditMenu;
 
     void enterSequencerUI(int track, int step);
     void exitSequencerUI();

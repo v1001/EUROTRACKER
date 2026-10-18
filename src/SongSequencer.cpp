@@ -7,11 +7,13 @@ SongSequencer::SongSequencer(DisplayManager& display, UserInput& userInput, Outp
       _songUI(display, userInput, _songData), _sequencerModeActive(false),
       _songState(STATE_STOP), _currentPlayStep(0), _currentStepTickCounter(0), _stepTicksRemaining(0),
       _pendingStart(false), _pendingSequencer(false), _nextPlayStep(0), _openSequencerTrack(0),
-      _gateQueues{}, _cvQueues{}, _lastDACValues{0, 0, 0, 0} {
+      _gateQueues{}, _cvQueues{}, _lastDACValues{0, 0, 0, 0},
+      _lastPerfAnimTime(0), _perfAnimFrame(0), _perfLastEncAPos(0), _perfLastEncBPos(0), _perfPopupTime(0) {
     
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = nullptr;
     }
+    _perfPopupText[0] = '\0';
 }
 
 SongSequencer::~SongSequencer() {
@@ -30,49 +32,38 @@ void SongSequencer::begin(bool reset) {
     _pendingStart = false;
 
     if (reset) {
-        // Delete existing project and save new empty one
         deleteCurrentProject();
         saveCurrentProject();
     } else {
-        // Normal load
         loadCurrentProject();
     }
-
-    // Removed xTaskCreatePinnedToCore
 }
 
 void SongSequencer::advanceToNextStep() {
-    // Protect the array access from concurrent UI edits
     portENTER_CRITICAL(&_songMutex);
     
     int nextStep = _currentPlayStep;
     if (_songState == STATE_PLAY_SONG) {
         SongData::SongStep* current = _songData.getStep(_currentPlayStep);
         
-        // 1. Check for active loop
         if (current != nullptr && current->loopTarget != nullptr && _stepLoopCounters[_currentPlayStep] > 0) {
             _stepLoopCounters[_currentPlayStep]--;
             int targetIdx = _songData.getStepIndex(current->loopTarget);
             
             if (targetIdx >= 0) {
                 nextStep = targetIdx;
-                // Reset counters for the looped section so they can trigger again
                 for (int i = nextStep; i < _currentPlayStep; i++) {
                     _stepLoopCounters[i] = _songData.getStep(i)->loopCount;
                 }
             } else {
-                // Fallback safety: advance normally if target is lost
                 nextStep = nextStep + 1;
             }
         } else {
-            // 2. Normal progression
             nextStep = nextStep + 1;
         }
 
-        // 3. Handle wrap-around to the beginning of the song
         if (nextStep >= _songData.getLength()) {
             nextStep = 0;
-            // Reset ALL counters so loops can trigger again in the next pass
             for (int i = 0; i < _songData.getLength(); i++) {
                 _stepLoopCounters[i] = _songData.getStep(i)->loopCount;
             }
@@ -94,30 +85,22 @@ void SongSequencer::advanceToNextStep() {
 bool SongSequencer::insertStep(int selectedStep) {
     portENTER_CRITICAL(&_songMutex);
     bool success = _songData.insertStep(selectedStep);
-    
-    // Fix: Only shift playback pointer if inserted strictly BEFORE the playing step
     if (success && _songState != STATE_STOP && selectedStep < _currentPlayStep) {
         _currentPlayStep++;
     }
     portEXIT_CRITICAL(&_songMutex);
-    
     if (success) _songUI.setSaveFlag();
     return success;
 }
 
 bool SongSequencer::deleteStep(int selectedStep) {
     if (_songState != STATE_STOP && selectedStep == _currentPlayStep) return false; 
-
     portENTER_CRITICAL(&_songMutex);
-    
     bool success = _songData.deleteStep(selectedStep);
-    
     if (success && _songState != STATE_STOP && selectedStep < _currentPlayStep) {
         _currentPlayStep--;
     }
-    
     portEXIT_CRITICAL(&_songMutex);
-    
     if (success) _songUI.setSaveFlag();
     return success;
 }
@@ -125,62 +108,49 @@ bool SongSequencer::deleteStep(int selectedStep) {
 bool SongSequencer::cloneStep(int selectedStep) {
     portENTER_CRITICAL(&_songMutex);
     bool success = _songData.cloneStep(selectedStep);
-    
-    // Fix: Only shift playback pointer if cloned strictly BEFORE the playing step
     if (success && _songState != STATE_STOP && selectedStep < _currentPlayStep) {
         _currentPlayStep++;
     }
     portEXIT_CRITICAL(&_songMutex);
-    
     if (success) _songUI.setSaveFlag();
     return success;
 }
 
-// NEW: Mutex-protected loop setter
 bool SongSequencer::setStepLoop(int stepIndex, int targetIndex, uint8_t count) {
     portENTER_CRITICAL(&_songMutex);
     bool success = _songData.setStepLoop(stepIndex, targetIndex, count);
     portEXIT_CRITICAL(&_songMutex);
-    
     if (success) _songUI.setSaveFlag();
     return success;
 }
 
-// NEW: Mutex-protected loop clearer
 void SongSequencer::clearStepLoop(int stepIndex) {
     portENTER_CRITICAL(&_songMutex);
     _songData.clearStepLoop(stepIndex);
     portEXIT_CRITICAL(&_songMutex);
-    
     _songUI.setSaveFlag();
 }
 
 void SongSequencer::initSequencers() {
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = new StepSequencer(_display, _userInput);
-
-        // Pass per-track gate queue
         _sequencers[i]->setGateQueue(&_gateQueues[i]);
+        
+        // Wire up Performance State
+        _sequencers[i]->setPerformanceState(&_perfState, i);
 
         if (i < 4) {
-            // Melodic track defaults: quantizer ON, reset OFF (KEEP mode).
-            // Attack/decay behave as portamento between quantized notes
-            // rather than an envelope from zero.
             _sequencers[i]->setQuantizerRef(&_songData.getQuantizer(i));
             _sequencers[i]->setCVQueue(&_cvQueues[i]);
             _sequencers[i]->setQuantizerEnabled(true);
             _sequencers[i]->setResetOnStep(false);
         } else {
-            // Gate-only tracks have no CV output. Reset ON keeps each
-            // trigger distinct and does not let long gates bleed across
-            // step boundaries.
             _sequencers[i]->setCVQueue(nullptr);
             _sequencers[i]->setResetOnStep(true);
         }
     }
     updateSequencersFromStep(_currentPlayStep, true);
 }
-
 
 void SongSequencer::update() {
     handleStateMachine();
@@ -219,80 +189,54 @@ void SongSequencer::scheduleSequencerMode(int track, int step) {
 }
 
 void SongSequencer::enterSequencerMode(int track, int step) {
-    // Load the selected step pattern into the sequencer
     updateSequencersFromStep(step, false);
     _currentPlayStep = step;
     _currentStepTickCounter = 0;
     _stepTicksRemaining = _songData.getStepLengthInTicks(_currentPlayStep);
-
-    // Notify the sequencer that we are entering its UI
-    if (_sequencers[track]) {
-        _sequencers[track]->onEnterUI();
-    }
-
+    if (_sequencers[track]) _sequencers[track]->onEnterUI();
     _sequencerModeActive = true;
-    
-    // Only change to LOOP_STEP if we were in PLAY_SONG mode
-    if (_songState == STATE_PLAY_SONG) {
-        _songState = STATE_LOOP_STEP;
-    }
+    if (_songState == STATE_PLAY_SONG) _songState = STATE_LOOP_STEP;
 }
 
 void SongSequencer::exitSequencerMode() {
     _songUI.resetEncoderTracking();
     _sequencerModeActive = false;
-    if(_songState == STATE_STOP){
-        saveCurrentProject();
-    }
+    if(_songState == STATE_STOP) saveCurrentProject();
 }
 
 StepSequencer* SongSequencer::getSequencer(int track) {
-    if (track >= 0 && track < NUM_TRACKS) {
-        return _sequencers[track];
-    }
+    if (track >= 0 && track < NUM_TRACKS) return _sequencers[track];
     return nullptr;
 }
 
 void SongSequencer::processClockTick(uint16_t tickCount) {
-    // Handle pending start (synchronized to next clock tick)
     if (_pendingStart && ( tickCount == 0 || !_syncStart)) {
         _pendingStart = false;
         _songState = STATE_PLAY_SONG;
         _currentStepTickCounter = 0;
-        
-        //Initialize all loop counters right before playback begins
         for (int i = 0; i < _songData.getLength(); i++) {
             _stepLoopCounters[i] = _songData.getStep(i)->loopCount;
         }
-        
         updateSequencersFromStep(_currentPlayStep, true);
         _stepTicksRemaining = _songData.getStepLengthInTicks(_currentPlayStep);
     }
     
     if (_songState!= STATE_STOP){
-        // Pass tick to all sequencers
         for (int i = 0; i < NUM_TRACKS; i++) {
-            if (_sequencers[i]) {
-                _sequencers[i]->onTimerTick(tickCount);
-            }
+            if (_sequencers[i]) _sequencers[i]->onTimerTick(tickCount);
         }
-        
-        // Handle song step advancement
         _currentStepTickCounter++;
         if (_currentStepTickCounter >= _stepTicksRemaining) {
             _currentStepTickCounter = 0;
             advanceToNextStep();
         }
-        // Handle pending sequencer mode (synchronized to next clock tick)
         if (_pendingSequencer && ( _currentStepTickCounter == 0 || _currentPlayStep == _nextPlayStep)){
             _pendingSequencer = false;
             enterSequencerMode(_openSequencerTrack,  _nextPlayStep);
         }
     }else{
         for (int i = 0; i < NUM_TRACKS; i++) {
-            if (_sequencers[i]) {
-                _sequencers[i]->onTimerTick(7);
-            }
+            if (_sequencers[i]) _sequencers[i]->onTimerTick(7);
         }
     }
 }
@@ -300,16 +244,12 @@ void SongSequencer::processClockTick(uint16_t tickCount) {
 void SongSequencer::processOutputs() {
     for (int i = 0; i < NUM_TRACKS; i++) {
         if (_sequencers[i]) {
-            if (_sequencers[i]->hasStepPending()) {
-                _sequencers[i]->onStep();
-            }
+            if (_sequencers[i]->hasStepPending()) _sequencers[i]->onStep();
             _sequencers[i]->processStepOutput();
-
             if (_sequencers[i]->isGateOutputChanged()) {
                 _outputHandler.setDigitalOutput(i, _sequencers[i]->getCurrentGateOutput());
                 _sequencers[i]->clearGateOutputChanged();
             }
-
             if (i < 4 && _songState != STATE_STOP) {
                 uint16_t currentDACValue = _sequencers[i]->getCurrentDACValue();
                 if (currentDACValue != _lastDACValues[i]) {
@@ -323,19 +263,15 @@ void SongSequencer::processOutputs() {
 
 void SongSequencer::updateSequencersFromStep(int step, bool resetPosition) {
     if (step >= _songData.getLength()) return;
-    
     for (int track = 0; track < NUM_TRACKS; track++) {
         uint16_t clockDivider = _songData.getDividerValue(track, step);
         _sequencers[track]->begin(&_songData.getPattern(track, step));
         _sequencers[track]->setClockDivision(clockDivider);
-        if(resetPosition){
-            _sequencers[track]->resetPosition();
-        }
+        if(resetPosition) _sequencers[track]->resetPosition();
     }
 }
 
 void SongSequencer::handleStateMachine() {
-    // Song State transitions
     if (_userInput.save_button.press_duration > 500) {
         _songState = STATE_STOP;
         _currentStepTickCounter = 0;
@@ -347,7 +283,6 @@ void SongSequencer::handleStateMachine() {
         _songUI.setSaveFlag();
     } else if (_userInput.save_button.just_pressed) {
         if (_songState == STATE_STOP) {
-            // Don't start immediately - wait for next clock tick
             _currentPlayStep = _songUI.getSelectedStep();
             _pendingStart = true;
         } else if (_songState == STATE_PLAY_SONG) {
@@ -365,15 +300,11 @@ void SongSequencer::saveCurrentProject() {
 }
 
 void SongSequencer::loadCurrentProject() {
-    if (!_songData.load(PROJECT_FILENAME, _sequencers)) {
-        saveCurrentProject();
-    }
-    // Reset to first step
+    if (!_songData.load(PROJECT_FILENAME, _sequencers)) saveCurrentProject();
     _currentPlayStep = 0;
     _currentStepTickCounter = 0;
     _stepTicksRemaining = _songData.getStepLengthInTicks(0);
     updateSequencersFromStep(0, true);
-    // Also reset the UI cursor
     _songUI.resetCursor();
 }
 
@@ -406,42 +337,26 @@ bool SongSequencer::fileExists(const char* filename) {
 
 void SongSequencer::startPlayback() {
     if (_songState != STATE_STOP) return;
-    
-    // Start from the first step
     _currentPlayStep = 0;
     _currentStepTickCounter = 0;
     _stepTicksRemaining = _songData.getStepLengthInTicks(_currentPlayStep);
-    
-    // Update sequencers to load the first step's patterns
     updateSequencersFromStep(_currentPlayStep, true);
-    
-    // Schedule start on next clock tick (for sync)
     _pendingStart = true;
 }
 
 void SongSequencer::newCurrentProject() {
     _songData.init();
-
-    // Clear any pending gate/CV events from the previous song.
-    // Queues are owned by SongSequencer, not by the sequencers, so they
-    // survive recreation and must be emptied explicitly.
     for (int i = 0; i < NUM_TRACKS; i++) _gateQueues[i].clear();
     for (int i = 0; i < 4; i++)         _cvQueues[i].clear();
-
-    // Recreate sequencers with fresh state.
-    // Null-then-delete: the timer ISR reads _sequencers[i] and must never
-    // see a dangling pointer.
     for (int i = 0; i < NUM_TRACKS; i++) {
         StepSequencer* old = _sequencers[i];
         _sequencers[i] = nullptr;
         delete old;
     }
-    initSequencers();   // also wires queues, quantizer refs, calls updateSequencersFromStep(0, true)
-
+    initSequencers();
     _currentPlayStep = 0;
     _currentStepTickCounter = 0;
     _stepTicksRemaining = _songData.getStepLengthInTicks(0);
-
     saveCurrentProject();
     _songUI.clearSaveFlag();
     _songUI.resetCursor();
@@ -456,4 +371,184 @@ void SongSequencer::previewDAC(int track, uint16_t value) {
     if (_songState != STATE_STOP) return;
     _outputHandler.setDACChannel(track, value);
     _lastDACValues[track] = value;
+}
+
+// ============================================================================
+// Performance Mode Implementation
+// ============================================================================
+
+void SongSequencer::enterPerformanceMode() {
+    _perfState.active = true;
+    _perfState.selectedTrack = 0;
+    
+    for (int i = 0; i < 6; i++) {
+        _perfState.trackEnabled[i] = false;
+        _perfState.trackMuted[i] = false;
+        _perfState.cvOffset[i] = 0;
+    }
+    _perfState.globalCvHold = false;
+    _perfState.globalStepRepeat = 0;
+    _perfState.globalGateHold = 0;
+    _perfState.globalRandomize = 0;
+    _perfState.globalProbReduce = 0;
+    
+    _perfLastEncAPos = _userInput.encoder_a.position;
+    _perfLastEncBPos = _userInput.encoder_b.position;
+    _perfPopupText[0] = '\0';
+}
+
+void SongSequencer::exitPerformanceMode() {
+    _perfState.active = false;
+}
+
+void SongSequencer::showPerfPopup(const char* text) {
+    snprintf(_perfPopupText, sizeof(_perfPopupText), "%s", text);
+    _perfPopupTime = millis();
+}
+
+void SongSequencer::updatePerformanceUI() {
+    // 1. Encoder A: Track Selection
+    if (_userInput.encoder_a.position != _perfLastEncAPos) {
+        int delta = (_userInput.encoder_a.position > _perfLastEncAPos) ? 1 : -1;
+        _perfState.selectedTrack += delta;
+        if (_perfState.selectedTrack < 0) _perfState.selectedTrack = 5;
+        if (_perfState.selectedTrack > 5) _perfState.selectedTrack = 0;
+        _perfLastEncAPos = _userInput.encoder_a.position;
+    }
+
+    // 2. Encoder B: CV Offset
+    if (_userInput.encoder_b.position != _perfLastEncBPos) {
+        int delta = (_userInput.encoder_b.position > _perfLastEncBPos) ? 1 : -1;
+        _perfState.cvOffset[_perfState.selectedTrack] += (delta * 50);
+        if (_perfState.cvOffset[_perfState.selectedTrack] > 2000) _perfState.cvOffset[_perfState.selectedTrack] = 2000;
+        if (_perfState.cvOffset[_perfState.selectedTrack] < -2000) _perfState.cvOffset[_perfState.selectedTrack] = -2000;
+        
+        char buf[32];
+        snprintf(buf, sizeof(buf), "T%d CV: %+d", _perfState.selectedTrack + 1, _perfState.cvOffset[_perfState.selectedTrack]);
+        showPerfPopup(buf);
+        _perfLastEncBPos = _userInput.encoder_b.position;
+    }
+
+    // 3. Buttons
+    if (_userInput.encoder_a_button.just_released) {
+        _perfState.trackEnabled[_perfState.selectedTrack] = !_perfState.trackEnabled[_perfState.selectedTrack];
+        char buf[32];
+        snprintf(buf, sizeof(buf), "T%d FX: %s", _perfState.selectedTrack + 1, _perfState.trackEnabled[_perfState.selectedTrack] ? "ON" : "OFF");
+        showPerfPopup(buf);
+    }
+    
+    if (_userInput.encoder_b_button.just_released) {
+        _perfState.globalCvHold = !_perfState.globalCvHold;
+        showPerfPopup(_perfState.globalCvHold ? "HOLD: ON" : "HOLD: OFF");
+    }
+    
+    if (_userInput.joystick_button.just_released) {
+        _perfState.trackMuted[_perfState.selectedTrack] = !_perfState.trackMuted[_perfState.selectedTrack];
+        char buf[32];
+        snprintf(buf, sizeof(buf), "T%d %s", _perfState.selectedTrack + 1, _perfState.trackMuted[_perfState.selectedTrack] ? "MUTED" : "UNMUTED");
+        showPerfPopup(buf);
+    }
+
+    // 4. Joystick Modifiers
+    int jx = _userInput.joystick.x_position;
+    int jy = _userInput.joystick.y_position;
+
+    if (jx > 30) _perfState.globalStepRepeat = (jx > 70) ? 3 : ((jx > 50) ? 2 : 1);
+    else _perfState.globalStepRepeat = 0;
+
+    if (jx < -30) _perfState.globalGateHold = (jx < -70) ? 3 : ((jx < -50) ? 2 : 1);
+    else _perfState.globalGateHold = 0;
+
+    if (jy < -30) _perfState.globalRandomize = (jy < -70) ? 3 : ((jy < -50) ? 2 : 1);
+    else _perfState.globalRandomize = 0;
+
+    if (jy > 30) _perfState.globalProbReduce = (jy > 70) ? 3 : ((jy > 50) ? 2 : 1);
+    else _perfState.globalProbReduce = 0;
+
+    // 5. Animation
+    if (millis() - _lastPerfAnimTime > 100) {
+        _lastPerfAnimTime = millis();
+        _perfAnimFrame = (_perfAnimFrame + 1) % 8;
+    }
+}
+
+void SongSequencer::drawPerformanceUI() {
+    // 1. Draw the base song UI
+    _songUI.setCurrentPlayingStep(_currentPlayStep);
+    _songUI.setPlaybackProgress(100*(float)_currentStepTickCounter/(float)_stepTicksRemaining);
+    _songUI.draw();
+
+    // 2. Overlay Track Headers (Invert for FX, M for Mute)
+    const int trackX[6] = {20, 38, 56, 74, 92, 110};
+    for (int i = 0; i < 6; i++) {
+        int x = trackX[i] + 4; // Text position from SongUI
+        bool enabled = _perfState.trackEnabled[i];
+        bool muted = _perfState.trackMuted[i];
+
+        if (muted) {
+            // Mute: Black background, "M", hide patterns
+            _display.fillRect(trackX[i], 0, 16, 10, _display.colorBlack());
+            _display.setTextColor(_display.colorWhite());
+            char label[4];
+            snprintf(label, sizeof(label), "M%d", i + 1);
+            _display.printAt(label, x, 0, ALIGN_LEFT);
+            
+            // Hide patterns for muted track
+            _display.fillRect(trackX[i], 11, 16, 43, _display.colorBlack());
+        } else if (enabled) {
+            // FX Enabled: Inverted background
+            _display.fillRect(trackX[i], 0, 16, 10, _display.colorWhite());
+            _display.setTextColor(_display.colorBlack());
+            char label[4];
+            snprintf(label, sizeof(label), "T%d", i + 1);
+            _display.printAt(label, x, 0, ALIGN_LEFT);
+            _display.setTextColor(_display.colorWhite());
+        }
+    }
+
+    // 3. Selection Frame
+    int selX = trackX[_perfState.selectedTrack];
+    _display.drawRect(selX - 2, 0, 20, 10, _display.colorWhite());
+
+    // 4. Staircase Animation (Replaces Play/Stop icons)
+    _display.drawStaircase(2, 0, _perfAnimFrame);
+
+    // 5. Status Bar (Global modifiers)
+    char status[32] = "";
+    if (_perfState.globalCvHold) strcat(status, "HLD ");
+    if (_perfState.globalStepRepeat > 0) {
+        char r[8]; snprintf(r, sizeof(r), "REP%d ", _perfState.globalStepRepeat);
+        strcat(status, r);
+    }
+    if (_perfState.globalGateHold > 0) {
+        char g[8]; snprintf(g, sizeof(g), "GAT%d ", _perfState.globalGateHold);
+        strcat(status, g);
+    }
+    if (_perfState.globalRandomize > 0) {
+        char rnd[8]; snprintf(rnd, sizeof(rnd), "RND%d ", _perfState.globalRandomize);
+        strcat(status, rnd);
+    }
+    if (_perfState.globalProbReduce > 0) {
+        char p[8]; snprintf(p, sizeof(p), "PRB%d ", _perfState.globalProbReduce * 25);
+        strcat(status, p);
+    }
+    
+    if (strlen(status) > 0) {
+        _display.printAt(status, 2, 54, ALIGN_LEFT);
+    }
+
+    // 6. Popup
+    if (_perfPopupText[0] != '\0' && (millis() - _perfPopupTime < 1000)) {
+        const int BOX_W = 108;
+        const int BOX_H = 16;
+        const int BOX_X = (128 - BOX_W) / 2;
+        const int BOX_Y = (64 - BOX_H) / 2;
+        
+        _display.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H, _display.colorWhite());
+        _display.setTextColor(_display.colorBlack());
+        _display.printCentered(_perfPopupText, BOX_Y + 4);
+        _display.setTextColor(_display.colorWhite());
+    } else {
+        _perfPopupText[0] = '\0';
+    }
 }

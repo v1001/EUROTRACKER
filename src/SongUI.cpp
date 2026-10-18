@@ -1,4 +1,5 @@
 #include "SongUI.h"
+#include "SongSequencer.h" // Required to access PerformanceState definition
 
 SongUI::SongUI(DisplayManager& display, UserInput& userInput, SongData& songData)
     : _display(display), _userInput(userInput), _songData(songData),
@@ -29,15 +30,33 @@ void SongUI::update() {
     }
 }
 
-void SongUI::draw() {
+void SongUI::draw(PerformanceState* perf) {
+    bool isPerf = (perf && perf->active);
+    
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
     
     // Header - track titles
     for (int i = 0; i < NUM_TRACKS; i++) {
+        bool muted = (isPerf && perf->trackMuted[i]);
+        bool enabled = (isPerf && perf->trackEnabled[i]);
+        
         char label[4];
-        sprintf(label, "T%d", i + 1);
-        _display.printAt(label, _trackXPositions[i] + 4, 0, ALIGN_LEFT);
+        if (muted) {
+            sprintf(label, "M%d", i + 1);
+        } else {
+            sprintf(label, "T%d", i + 1);
+        }
+        
+        if (enabled) {
+            // FX Enabled: Inverted background
+            _display.fillRect(_trackXPositions[i] - 1, 1, 16, 8, _display.colorWhite());
+            _display.setTextColor(_display.colorBlack());
+            _display.printAt(label, _trackXPositions[i] + 1, 0, ALIGN_LEFT);
+            _display.setTextColor(_display.colorWhite());
+        } else {
+            _display.printAt(label, _trackXPositions[i] + 2, 0, ALIGN_LEFT);
+        }
     }
     _display.drawLine(0, 10, 128, 10, _display.colorWhite());
     
@@ -64,6 +83,11 @@ void SongUI::draw() {
         }
         
         for (int col = 0; col < NUM_TRACKS; col++) {
+            // Skip drawing patterns for muted tracks
+            if (isPerf && perf->trackMuted[col]) {
+                continue;
+            }
+            
             int x = _trackXPositions[col];
             
             if (_showPattern) {
@@ -109,15 +133,24 @@ void SongUI::draw() {
         }
     }
     
-    // Cursor
-    if (_cursorCol >= 1 && _cursorCol <= NUM_TRACKS) {
-        int cursorX = _trackXPositions[_cursorCol - 1] - 1;
-        int cursorY = 14 + _cursorRow * 10 - 2;
-        _display.drawRect(cursorX, cursorY, 18, 10, _display.colorWhite());
+    // Cursor / Selection Frame
+    if (isPerf) {
+        // Performance Mode: Frame around selected track header
+        int selX = _trackXPositions[perf->selectedTrack] - 2;
+        _display.drawRect(selX, 0, 20, 10, _display.colorWhite());
+    } else {
+        // Normal Mode: Frame around selected cell
+        if (_cursorCol >= 1 && _cursorCol <= NUM_TRACKS) {
+            int cursorX = _trackXPositions[_cursorCol - 1] - 1;
+            int cursorY = 14 + _cursorRow * 10 - 2;
+            _display.drawRect(cursorX, cursorY, 18, 10, _display.colorWhite());
+        }
     }
     
-    // Status bar
-    drawStatusBar();
+    // Status bar (Only draw default if not in performance mode)
+    if (!isPerf) {
+        drawStatusBar();
+    }
 }
 
 void SongUI::drawPatternPreview(StepPattern& pattern, int x, int y) {

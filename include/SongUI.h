@@ -5,6 +5,9 @@
 #include "UserInput.h"
 #include "SongData.h"
 
+// Forward declaration to avoid circular dependency
+struct PerformanceState;
+
 class SongUI {
 public:
     SongUI(DisplayManager& display, UserInput& userInput, SongData& songData);
@@ -23,8 +26,8 @@ public:
     int getSelectedTrack() const { return _cursorCol - 1; }
     int getSelectedStep() const { return _scrollOffset + _cursorRow; }
     
-    // Drawing
-    void draw();
+    // Drawing (accepts optional PerformanceState for overlay)
+    void draw(PerformanceState* perf = nullptr);
 
     // Autosave logic
     bool needsSave() const;
