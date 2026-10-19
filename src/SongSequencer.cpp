@@ -398,15 +398,32 @@ void SongSequencer::formatEffectValue(int track, bool isY, char* buf, size_t len
     int8_t mag = isY ? _songData.getMagY(track) : _songData.getMagX(track);
     float scaled = (joy / 99.0f) * mag;
     
-    if (eff == 1) { // Transpose
-        snprintf(buf, len, "CV %+d", (int)(scaled * 205));
-    } else if (eff == 2) { // Slide
-        snprintf(buf, len, "SLD%+d%%", (int)(abs(scaled) * 100));
-    } else if (eff == 3) { // Random
-        snprintf(buf, len, "RND%+d%%", (int)(scaled * 100));
-    } else if (eff == 4) { // Density
-        int n = 1 + round(3 * abs(scaled));
-        snprintf(buf, len, "DNS%+d", (joy > 0) ? n : -n);
+    if (eff == 1) { // CV MOD
+        snprintf(buf, len, "CV%+d", (int)(scaled * 205));
+    } 
+    else if (eff == 2) { // SLIDE
+        // Engine adds up to 24 * abs(mag) to the 0-99 parameter
+        int offset = (int)(abs(scaled) * 24);
+        if (joy > 0) snprintf(buf, len, "ATK+%d", offset);
+        else snprintf(buf, len, "DCY+%d", offset);
+    } 
+    else if (eff == 3) { // RANDOM
+        if (scaled > 0) {
+            snprintf(buf, len, "RND+%d%%", (int)((scaled / 4.0f) * 100.0f));
+        } else {
+            snprintf(buf, len, "RND-%d%%", (int)((abs(scaled) / 4.0f) * 75.0f));
+        }
+    } 
+    else if (eff == 4) { // DENSITY
+        // Matches the engine: 1 + round(3 * mag/4)
+        int n_max = round(1 + 3 * (abs(mag) / 4.0f));
+        if (joy > 0) {
+            int n = map((long)(scaled * 100), 1, 400, n_max, 1);
+            snprintf(buf, len, "DNS+%d", n);
+        } else {
+            int n = map((long)(abs(scaled) * 100), 1, 400, 1, n_max);
+            snprintf(buf, len, "DNS-%d", n);
+        }
     }
 }
 
