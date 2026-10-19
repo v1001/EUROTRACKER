@@ -8,8 +8,9 @@
 #include "Quantizer.h"
 #include "EventQueue.h"
 
-// Forward declaration to avoid circular dependency with SongSequencer.h
+// Forward declarations
 struct PerformanceState;
+class SongData;
 
 class StepSequencer {
 public:
@@ -60,8 +61,9 @@ public:
     void setCVQueue(CVQueue* queue) { _cvQueue = queue; }
 
     // Performance Mode
-    void setPerformanceState(PerformanceState* state, int trackIndex) {
+    void setPerformanceState(PerformanceState* state, SongData* songData, int trackIndex) {
         _perfState = state;
+        _songData = songData;
         _trackIndex = trackIndex;
     }
 
@@ -79,9 +81,7 @@ public:
         bool hasData;
     };
 
-    // System-wide step clipboard.
-    static void copyStep(const StepPattern* pattern, uint8_t stepIndex,
-                         uint8_t trackIndex);
+    static void copyStep(const StepPattern* pattern, uint8_t stepIndex, uint8_t trackIndex);
     static void pasteStep(StepPattern* pattern, uint8_t stepIndex);
     static bool hasCopiedStep() { return _copiedStep.hasData; }
     static uint8_t getCopiedSourceStep() { return _copiedStep.sourceStep; }
@@ -103,7 +103,6 @@ private:
     uint64_t _lastStepTime;
     uint64_t _lastTickTime;
 
-    // Interpolation anchor for CV_SMOOTH events
     uint16_t _lastCVEventValue;
     uint64_t _lastCVEventTimestamp;
     
@@ -121,7 +120,6 @@ private:
     void renderToDisplay();
     uint8_t constrainValue(int value);
 
-    // Quantizer
     bool _quantizerEnabled;
     Quantizer* _quantizer;
     uint16_t _minCV;
@@ -130,12 +128,12 @@ private:
     bool _resetOnStep;
     uint8_t _swingAmount;
 
-    // Event queue references
     GateQueue* _gateQueue;
     CVQueue* _cvQueue;
 
-    // ===== Performance Mode State =====
+    // Performance Mode
     PerformanceState* _perfState = nullptr;
+    SongData* _songData = nullptr;
     int _trackIndex = 0;
 
     struct StepEffects {
@@ -143,11 +141,17 @@ private:
         uint8_t gatePercent;
         uint8_t probability;
         uint8_t ratchet;
+        uint8_t attack;
+        uint8_t decay;
         bool trigger;
     };
 
-    StepEffects _lastPlayedStep = {0, 0, 0, 1, false};
+    StepEffects _lastPlayedStep = {0, 0, 0, 1, 0, 0, false};
+    uint8_t _skipCounter = 0;
+    uint8_t _repeatCounter = 0;
+
     void processEffects(StepEffects& effects);
+    void applyEffect(uint8_t eff, int8_t mag, int joy, StepEffects& effects);
 };
 
 #endif

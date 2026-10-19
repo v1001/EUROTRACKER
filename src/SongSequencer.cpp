@@ -8,7 +8,7 @@ SongSequencer::SongSequencer(DisplayManager& display, UserInput& userInput, Outp
       _songState(STATE_STOP), _currentPlayStep(0), _currentStepTickCounter(0), _stepTicksRemaining(0),
       _pendingStart(false), _pendingSequencer(false), _nextPlayStep(0), _openSequencerTrack(0),
       _gateQueues{}, _cvQueues{}, _lastDACValues{0, 0, 0, 0},
-      _lastPerfAnimTime(0), _perfAnimFrame(0), _perfLastEncAPos(0), _perfLastEncBPos(0), _perfPopupTime(0) {
+      _lastPerfAnimTime(0), _lastJoyMoveTime(0), _perfAnimFrame(0), _perfLastEncAPos(0), _perfLastEncBPos(0), _perfPopupTime(0) {
     
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = nullptr;
@@ -17,9 +17,7 @@ SongSequencer::SongSequencer(DisplayManager& display, UserInput& userInput, Outp
 }
 
 SongSequencer::~SongSequencer() {
-    for (int i = 0; i < NUM_TRACKS; i++) {
-        delete _sequencers[i];
-    }
+    for (int i = 0; i < NUM_TRACKS; i++) delete _sequencers[i];
 }
 
 void SongSequencer::begin(bool reset) {
@@ -135,9 +133,7 @@ void SongSequencer::initSequencers() {
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = new StepSequencer(_display, _userInput);
         _sequencers[i]->setGateQueue(&_gateQueues[i]);
-        
-        // Wire up Performance State
-        _sequencers[i]->setPerformanceState(&_perfState, i);
+        _sequencers[i]->setPerformanceState(&_perfState, &_songData, i);
 
         if (i < 4) {
             _sequencers[i]->setQuantizerRef(&_songData.getQuantizer(i));
@@ -165,15 +161,9 @@ void SongSequencer::drawSongUI() {
         _display.drawHourglass(2, 0);
     }else{
         switch (_songState) {
-            case STATE_STOP:
-                _display.fillRect(2, 1, 7, 7, _display.colorWhite());
-                break;
-            case STATE_PLAY_SONG:
-                _display.drawPlaySign(2, 0);
-                break;
-            case STATE_LOOP_STEP:
-                _display.drawLoopSign(2, 0);
-                break;
+            case STATE_STOP: _display.fillRect(2, 1, 7, 7, _display.colorWhite()); break;
+            case STATE_PLAY_SONG: _display.drawPlaySign(2, 0); break;
+            case STATE_LOOP_STEP: _display.drawLoopSign(2, 0); break;
         }
     }
 }
@@ -295,10 +285,7 @@ void SongSequencer::handleStateMachine() {
     }
 }
 
-void SongSequencer::saveCurrentProject() {
-    _songData.save(PROJECT_FILENAME, _sequencers);
-}
-
+void SongSequencer::saveCurrentProject() { _songData.save(PROJECT_FILENAME, _sequencers); }
 void SongSequencer::loadCurrentProject() {
     if (!_songData.load(PROJECT_FILENAME, _sequencers)) saveCurrentProject();
     _currentPlayStep = 0;
@@ -307,19 +294,9 @@ void SongSequencer::loadCurrentProject() {
     updateSequencersFromStep(0, true);
     _songUI.resetCursor();
 }
-
-void SongSequencer::deleteCurrentProject() {
-    _songData.deleteFile(PROJECT_FILENAME);
-}
-
-void SongSequencer::resetEncoderTracking() {
-    _songUI.resetEncoderTracking();
-}
-
-void SongSequencer::saveCurrentProjectToFile(const char* filename) {
-    _songData.save(filename, _sequencers);
-}
-
+void SongSequencer::deleteCurrentProject() { _songData.deleteFile(PROJECT_FILENAME); }
+void SongSequencer::resetEncoderTracking() { _songUI.resetEncoderTracking(); }
+void SongSequencer::saveCurrentProjectToFile(const char* filename) { _songData.save(filename, _sequencers); }
 void SongSequencer::loadCurrentProjectFromFile(const char* filename) {
     if (_songData.load(filename, _sequencers)) {
         _currentPlayStep = 0;
@@ -330,10 +307,7 @@ void SongSequencer::loadCurrentProjectFromFile(const char* filename) {
         _songUI.resetCursor();
     }
 }
-
-bool SongSequencer::fileExists(const char* filename) {
-    return _songData.exists(filename);
-}
+bool SongSequencer::fileExists(const char* filename) { return _songData.exists(filename); }
 
 void SongSequencer::startPlayback() {
     if (_songState != STATE_STOP) return;
@@ -347,12 +321,8 @@ void SongSequencer::startPlayback() {
 void SongSequencer::newCurrentProject() {
     _songData.init();
     for (int i = 0; i < NUM_TRACKS; i++) _gateQueues[i].clear();
-    for (int i = 0; i < 4; i++)         _cvQueues[i].clear();
-    for (int i = 0; i < NUM_TRACKS; i++) {
-        StepSequencer* old = _sequencers[i];
-        _sequencers[i] = nullptr;
-        delete old;
-    }
+    for (int i = 0; i < 4; i++) _cvQueues[i].clear();
+    for (int i = 0; i < NUM_TRACKS; i++) { delete _sequencers[i]; }
     initSequencers();
     _currentPlayStep = 0;
     _currentStepTickCounter = 0;
@@ -362,10 +332,7 @@ void SongSequencer::newCurrentProject() {
     _songUI.resetCursor();
 }
 
-void SongSequencer::markProjectDirty() {
-    _songUI.setSaveFlag();
-}
-
+void SongSequencer::markProjectDirty() { _songUI.setSaveFlag(); }
 void SongSequencer::previewDAC(int track, uint16_t value) {
     if (track < 0 || track >= 4) return;
     if (_songState != STATE_STOP) return;
@@ -379,28 +346,68 @@ void SongSequencer::previewDAC(int track, uint16_t value) {
 
 void SongSequencer::enterPerformanceMode() {
     _perfState.active = true;
-    _perfState.selectedTrack = 0;
+    _perfState.editMode = false;
+    _perfState.editYAxis = false;
+    _perfState.selectedTrackX = 0;
+    _perfState.selectedTrackY = 0;
     
     for (int i = 0; i < 6; i++) {
-        _perfState.trackEnabled[i] = false;
         _perfState.trackMuted[i] = false;
-        _perfState.cvOffset[i] = 0;
     }
-    _perfState.globalCvHold = false;
-    _perfState.globalStepRepeat = 0;
-    _perfState.globalGateHold = 0;
-    _perfState.globalRandomize = 0;
-    _perfState.globalProbReduce = 0;
     
     _perfLastEncAPos = _userInput.encoder_a.position;
     _perfLastEncBPos = _userInput.encoder_b.position;
     _perfPopupText[0] = '\0';
+    _lastJoyMoveTime = 0;
 
     _userInput.encoder_b_button.just_pressed = false;
 }
 
 void SongSequencer::exitPerformanceMode() {
     _perfState.active = false;
+    _perfState.editMode = false;
+}
+
+const char* SongSequencer::getEffectName(uint8_t eff) {
+    switch (eff) {
+        case 1: return "CV MOD"; // Changed from TRANSPOSE
+        case 2: return "SLIDE";
+        case 3: return "RANDOM";
+        case 4: return "DENSITY";
+        default: return "NONE";
+    }
+}
+
+const char* SongSequencer::getShortEffectDesc(uint8_t eff, bool pos) {
+    switch (eff) {
+        case 1: return pos ? "+CV" : "-CV"; // Changed from Pitch
+        case 2: return pos ? "+Attack" : "+Decay";
+        case 3: return pos ? "Rnd CV/Ratch" : "-Prob";
+        case 4: return pos ? "Repeat steps" : "Skip steps";
+        default: return "";
+    }
+}
+
+void SongSequencer::formatEffectValue(int track, bool isY, char* buf, size_t len) {
+    uint8_t eff = isY ? _songData.getEffectY(track) : _songData.getEffectX(track);
+    if (eff == 0) { snprintf(buf, len, "---"); return; }
+    
+    int joy = isY ? _perfState.joyY : _perfState.joyX;
+    if (joy == 0) { snprintf(buf, len, "---"); return; }
+
+    int8_t mag = isY ? _songData.getMagY(track) : _songData.getMagX(track);
+    float scaled = (joy / 99.0f) * mag;
+    
+    if (eff == 1) { // Transpose
+        snprintf(buf, len, "CV %+d", (int)(scaled * 205));
+    } else if (eff == 2) { // Slide
+        snprintf(buf, len, "SLD%+d%%", (int)(abs(scaled) * 100));
+    } else if (eff == 3) { // Random
+        snprintf(buf, len, "RND%+d%%", (int)(scaled * 100));
+    } else if (eff == 4) { // Density
+        int n = 1 + round(3 * abs(scaled));
+        snprintf(buf, len, "DNS%+d", (joy > 0) ? n : -n);
+    }
 }
 
 void SongSequencer::showPerfPopup(const char* text) {
@@ -409,65 +416,79 @@ void SongSequencer::showPerfPopup(const char* text) {
 }
 
 void SongSequencer::updatePerformanceUI() {
-    // 1. Encoder A: Track Selection
-    if (_userInput.encoder_a.position != _perfLastEncAPos) {
-        int delta = (_userInput.encoder_a.position > _perfLastEncAPos) ? 1 : -1;
-        _perfState.selectedTrack += delta;
-        if (_perfState.selectedTrack < 0) _perfState.selectedTrack = 5;
-        if (_perfState.selectedTrack > 5) _perfState.selectedTrack = 0;
-        _perfLastEncAPos = _userInput.encoder_a.position;
-    }
-
-    // 2. Encoder B: CV Offset
-    if (_userInput.encoder_b.position != _perfLastEncBPos) {
-        int delta = (_userInput.encoder_b.position > _perfLastEncBPos) ? 1 : -1;
-        _perfState.cvOffset[_perfState.selectedTrack] += (delta * 50);
-        if (_perfState.cvOffset[_perfState.selectedTrack] > 2000) _perfState.cvOffset[_perfState.selectedTrack] = 2000;
-        if (_perfState.cvOffset[_perfState.selectedTrack] < -2000) _perfState.cvOffset[_perfState.selectedTrack] = -2000;
-        
-        char buf[32];
-        snprintf(buf, sizeof(buf), "T%d CV: %+d", _perfState.selectedTrack + 1, _perfState.cvOffset[_perfState.selectedTrack]);
-        showPerfPopup(buf);
-        _perfLastEncBPos = _userInput.encoder_b.position;
-    }
-
-    // 3. Buttons
-    if (_userInput.encoder_a_button.just_pressed) {
-        _perfState.trackEnabled[_perfState.selectedTrack] = !_perfState.trackEnabled[_perfState.selectedTrack];
-        char buf[32];
-        snprintf(buf, sizeof(buf), "T%d FX: %s", _perfState.selectedTrack + 1, _perfState.trackEnabled[_perfState.selectedTrack] ? "ON" : "OFF");
-        showPerfPopup(buf);
-    }
-    
-    if (_userInput.encoder_b_button.just_pressed) {
-        _perfState.globalCvHold = !_perfState.globalCvHold;
-        showPerfPopup(_perfState.globalCvHold ? "HOLD: ON" : "HOLD: OFF");
-    }
-    
-    if (_userInput.joystick_button.just_pressed) {
-        _perfState.trackMuted[_perfState.selectedTrack] = !_perfState.trackMuted[_perfState.selectedTrack];
-        char buf[32];
-        snprintf(buf, sizeof(buf), "T%d %s", _perfState.selectedTrack + 1, _perfState.trackMuted[_perfState.selectedTrack] ? "MUTED" : "UNMUTED");
-        showPerfPopup(buf);
-    }
-
-    // 4. Joystick Modifiers
     int jx = _userInput.joystick.x_position;
     int jy = _userInput.joystick.y_position;
+    
+    _perfState.joyX = (abs(jx) > 10) ? jx : 0;
+    _perfState.joyY = (abs(jy) > 10) ? jy : 0;
+    
+    if (abs(jx) > 10 || abs(jy) > 10) {
+        _lastJoyMoveTime = millis();
+    }
 
-    if (jx > 30) _perfState.globalStepRepeat = (jx > 70) ? 3 : ((jx > 50) ? 2 : 1);
-    else _perfState.globalStepRepeat = 0;
+    if (!_perfState.editMode) {
+        // PLAY MODE
+        if (_userInput.encoder_a.position != _perfLastEncAPos) {
+            int delta = (_userInput.encoder_a.position > _perfLastEncAPos) ? 1 : -1;
+            _perfState.selectedTrackX = (_perfState.selectedTrackX + delta + 6) % 6;
+            _perfLastEncAPos = _userInput.encoder_a.position;
+        }
+        if (_userInput.encoder_b.position != _perfLastEncBPos) {
+            int delta = (_userInput.encoder_b.position > _perfLastEncBPos) ? 1 : -1;
+            _perfState.selectedTrackY = (_perfState.selectedTrackY + delta + 6) % 6;
+            _perfLastEncBPos = _userInput.encoder_b.position;
+        }
+        
+        if (_userInput.joystick_button.just_pressed) {
+            bool newState = !_perfState.trackMuted[_perfState.selectedTrackX];
+            _perfState.trackMuted[_perfState.selectedTrackX] = newState;
+            _perfState.trackMuted[_perfState.selectedTrackY] = newState;
+        }
 
-    if (jx < -30) _perfState.globalGateHold = (jx < -70) ? 3 : ((jx < -50) ? 2 : 1);
-    else _perfState.globalGateHold = 0;
+        if (_userInput.encoder_a_button.just_pressed) {
+            _perfState.editMode = true;
+            _perfState.editYAxis = false;
+        }
+        if (_userInput.encoder_b_button.just_pressed) {
+            _perfState.editMode = true;
+            _perfState.editYAxis = true;
+        }
+    } else {
+        // EDIT MODE
+        int track = _perfState.editYAxis ? _perfState.selectedTrackY : _perfState.selectedTrackX;
+        uint8_t eff = _perfState.editYAxis ? _songData.getEffectY(track) : _songData.getEffectX(track);
+        int8_t mag = _perfState.editYAxis ? _songData.getMagY(track) : _songData.getMagX(track);
+        bool isCv = (track < 4);
 
-    if (jy < -30) _perfState.globalRandomize = (jy < -70) ? 3 : ((jy < -50) ? 2 : 1);
-    else _perfState.globalRandomize = 0;
+        if (_userInput.encoder_a.position != _perfLastEncAPos) {
+            int delta = (_userInput.encoder_a.position > _perfLastEncAPos) ? 1 : -1;
+            if (delta > 0) {
+                do { eff = (eff + 1) % 5; } while (!isCv && (eff == 1 || eff == 2));
+            } else {
+                do { eff = (eff + 4) % 5; } while (!isCv && (eff == 1 || eff == 2));
+            }
+            if (_perfState.editYAxis) _songData.setEffectY(track, eff);
+            else _songData.setEffectX(track, eff);
+            _perfLastEncAPos = _userInput.encoder_a.position;
+        }
 
-    if (jy > 30) _perfState.globalProbReduce = (jy > 70) ? 3 : ((jy > 50) ? 2 : 1);
-    else _perfState.globalProbReduce = 0;
+        if (_userInput.encoder_b.position != _perfLastEncBPos) {
+            int delta = (_userInput.encoder_b.position > _perfLastEncBPos) ? 1 : -1;
+            mag = mag + delta;
+            if (mag > 4) mag = -4;
+            if (mag < -4) mag = 4;
+            if (mag == 0) mag = (delta > 0) ? 1 : -1;
+            if (_perfState.editYAxis) _songData.setMagY(track, mag);
+            else _songData.setMagX(track, mag);
+            _perfLastEncBPos = _userInput.encoder_b.position;
+        }
 
-    // 5. Animation
+        if (_userInput.encoder_a_button.just_pressed || _userInput.encoder_b_button.just_pressed) {
+            _perfState.editMode = false;
+            saveCurrentProject();
+        }
+    }
+
     if (millis() - _lastPerfAnimTime > 100) {
         _lastPerfAnimTime = millis();
         _perfAnimFrame = (_perfAnimFrame + 1) % 8;
@@ -475,51 +496,74 @@ void SongSequencer::updatePerformanceUI() {
 }
 
 void SongSequencer::drawPerformanceUI() {
-    // 1. Draw the base song UI
     _songUI.setCurrentPlayingStep(_currentPlayStep);
     _songUI.setPlaybackProgress(100*(float)_currentStepTickCounter/(float)_stepTicksRemaining);
     _songUI.draw(&_perfState);
 
-    // 4. Staircase Animation (Replaces Play/Stop icons)
     _display.drawStaircase(2, 0, _perfAnimFrame);
 
-    // 5. Status Bar (Global modifiers)
-    char status[32] = "";
-    if (_perfState.globalCvHold) strcat(status, "HLD ");
-    if (_perfState.globalStepRepeat > 0) {
-        char r[8]; snprintf(r, sizeof(r), "REP%d ", _perfState.globalStepRepeat);
-        strcat(status, r);
-    }
-    if (_perfState.globalGateHold > 0) {
-        char g[8]; snprintf(g, sizeof(g), "GAT%d ", _perfState.globalGateHold);
-        strcat(status, g);
-    }
-    if (_perfState.globalRandomize > 0) {
-        char rnd[8]; snprintf(rnd, sizeof(rnd), "RND%d ", _perfState.globalRandomize);
-        strcat(status, rnd);
-    }
-    if (_perfState.globalProbReduce > 0) {
-        // Invert the display to show actual probability, not the reduction amount
-        char p[8]; snprintf(p, sizeof(p), "PRB%d ", (4 - _perfState.globalProbReduce) * 25);
-        strcat(status, p);
-    }
-    
-    if (strlen(status) > 0) {
-        _display.printAt(status, 2, 54, ALIGN_LEFT);
-    }
+    if (_perfState.editMode) {
+        // ===== EDIT MODE POPUP =====
+        int track = _perfState.editYAxis ? _perfState.selectedTrackY : _perfState.selectedTrackX;
+        uint8_t eff = _perfState.editYAxis ? _songData.getEffectY(track) : _songData.getEffectX(track);
+        int8_t mag = _perfState.editYAxis ? _songData.getMagY(track) : _songData.getMagX(track);
 
-    // 6. Popup
-    if (_perfPopupText[0] != '\0' && (millis() - _perfPopupTime < 1000)) {
-        const int BOX_W = 108;
-        const int BOX_H = 16;
-        const int BOX_X = (128 - BOX_W) / 2;
-        const int BOX_Y = (64 - BOX_H) / 2;
-        
-        _display.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H, _display.colorWhite());
+        _display.fillRect(2, 4, 124, 56, _display.colorWhite());
         _display.setTextColor(_display.colorBlack());
-        _display.printCentered(_perfPopupText, BOX_Y + 4);
+        
+        char buf[32];
+        // Line 1: Title
+        snprintf(buf, sizeof(buf), "T%d-%c FX: %s", track+1, _perfState.editYAxis ? 'Y' : 'X', getEffectName(eff));
+        _display.printCentered(buf, 8);
+        
+        // Line 2: Depth
+        snprintf(buf, sizeof(buf), "DEPTH: %+d", mag);
+        _display.printCentered(buf, 18);
+        
+        // Lines 3 & 4: Direction + Effect
+        const int colonX = 44;
+        const int effX = colonX + 8;
+        
+        // Flip the descriptions if depth is negative
+        bool depthPositive = (mag >= 0);
+        const char* descRightUp = getShortEffectDesc(eff, depthPositive);
+        const char* descLeftDown = getShortEffectDesc(eff, !depthPositive);
+
+        if (_perfState.editYAxis) {
+            _display.printAt("Up:", colonX - 18, 32, ALIGN_LEFT);
+            _display.printAt("Down:", colonX - 30, 42, ALIGN_LEFT);
+        } else {
+            _display.printAt("Right:", colonX - 36, 32, ALIGN_LEFT);
+            _display.printAt("Left:", colonX - 30, 42, ALIGN_LEFT);
+        }
+        _display.printAt(descRightUp, effX, 32, ALIGN_LEFT);
+        _display.printAt(descLeftDown, effX, 42, ALIGN_LEFT);
+        
         _display.setTextColor(_display.colorWhite());
-    } else {
-        _perfPopupText[0] = '\0';
+    } 
+    else if (millis() - _lastJoyMoveTime < 500) {
+        // ===== JOYSTICK FULL-SCREEN POPUP =====
+        _display.fillRect(0, 0, 128, 64, _display.colorWhite());
+        _display.setTextColor(_display.colorBlack());
+        
+        // Column headers (aligned to their data columns)
+        char buf[16];
+        snprintf(buf, sizeof(buf), "X=%+d", _perfState.joyX);
+        _display.printAt(buf, 8, 2, ALIGN_LEFT);
+        snprintf(buf, sizeof(buf), "Y=%+d", _perfState.joyY);
+        _display.printAt(buf, 58, 2, ALIGN_LEFT);
+        
+        // 6 track rows
+        for (int i = 0; i < 6; i++) {
+            char valX[16], valY[16], label[8];
+            formatEffectValue(i, false, valX, sizeof(valX));
+            formatEffectValue(i, true, valY, sizeof(valY));
+            
+            snprintf(label, sizeof(label), "%d:", i+1);
+            _display.printAt(label, 4, 14 + i * 8, ALIGN_LEFT);
+            _display.printAt(valX, 20, 14 + i * 8, ALIGN_LEFT);
+            _display.printAt(valY, 70, 14 + i * 8, ALIGN_LEFT);
+        }
+        _display.setTextColor(_display.colorWhite());
     }
 }

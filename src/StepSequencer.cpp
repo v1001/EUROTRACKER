@@ -1,5 +1,6 @@
 #include "StepSequencer.h"
-#include "SongSequencer.h" // Required to access PerformanceState members
+#include "SongSequencer.h"
+#include "SongData.h"
 
 StepSequencer::StepSequencer(DisplayManager& display, UserInput& userInput)
     : _display(display), _userInput(userInput), _ui(display, userInput), _pattern(nullptr),
@@ -28,6 +29,8 @@ void StepSequencer::resetPosition() {
     _lastCVEventValue = 0;
     _lastCVEventTimestamp = 0;
     _lastPlayedStep.trigger = false;
+    _skipCounter = 0;
+    _repeatCounter = 0;
 }
 
 void StepSequencer::update() {
@@ -98,66 +101,93 @@ void StepSequencer::onTimerTick(uint16_t tickCount) {
     }
 }
 
-// ============================================================================
-// Performance Effects Engine
-// ============================================================================
+void StepSequencer::applyEffect(uint8_t eff, int8_t mag, int joy, StepEffects& effects) {
+    if (eff == 0 || mag == 0) return;
+
+    // Scale: -4.0 to +4.0
+    float scaled_joy = (joy / 99.0f) * mag;
+
+    if (eff == 1) { // Transpose
+        int32_t offset = (int32_t)(scaled_joy * 205);
+        int32_t newCV = effects.cv + offset;
+        if (newCV < 0) newCV = 0;
+        if (newCV > 4095) newCV = 4095;
+        effects.cv = (uint16_t)newCV;
+    } 
+    else if (eff == 2) { // Slide
+        int offset = (int)(abs(scaled_joy) * 24);
+        if (scaled_joy > 0) {
+            effects.attack = constrainValue(effects.attack + offset);
+        } else if (scaled_joy < 0) {
+            effects.decay = constrainValue(effects.decay + offset);
+        }
+    } 
+    else if (eff == 3) { // Random
+        if (scaled_joy > 0) {
+            float chance = (scaled_joy / 4.0f) * 100.0f;
+            if (random(0, 100) < chance) {
+                int32_t offset = random(-205 * abs(mag), 205 * abs(mag) + 1);
+                int32_t newCV = effects.cv + offset;
+                if (newCV < 0) newCV = 0;
+                if (newCV > 4095) newCV = 4095;
+                effects.cv = (uint16_t)newCV;
+                
+                effects.ratchet = random(2, abs(mag) + 2);
+            }
+        } else if (scaled_joy < 0) {
+            float reduction = (abs(scaled_joy) / 4.0f) * 0.75f;
+            float newProb = effects.probability * (1.0f - reduction);
+            effects.probability = constrain((int)newProb, 1, 100);
+        }
+    } 
+    else if (eff == 4) { // Density
+        int n_max = round(1 + 3 * (abs(mag) / 4.0f));
+        if (scaled_joy > 0) {
+            int n = map(scaled_joy * 100, 1, 400, n_max, 1);
+            n = constrain(n, 1, n_max);
+            if (effects.trigger) {
+                _repeatCounter = 0;
+            } else {
+                _repeatCounter++;
+                if (_lastPlayedStep.trigger && (_repeatCounter % n) == 0) {
+                    effects = _lastPlayedStep;
+                    effects.trigger = true;
+                }
+            }
+        } else if (scaled_joy < 0) {
+            int n = map(abs(scaled_joy) * 100, 1, 400, 1, n_max);
+            n = constrain(n, 1, n_max);
+            if (effects.trigger) {
+                _skipCounter++;
+                if ((_skipCounter % n) != 0) {
+                    effects.trigger = false;
+                }
+            }
+        }
+    }
+}
+
 void StepSequencer::processEffects(StepEffects& effects) {
     if (!_perfState || !_perfState->active) return;
 
-    // 1. Mute Check (Always takes priority)
+    // Mute check
     if (_perfState->trackMuted[_trackIndex]) {
         effects.trigger = false;
         return;
     }
 
-    // 2. Check if FX are enabled for this track
-    bool fxEnabled = _perfState->trackEnabled[_trackIndex];
-
-    // 3. Step Repeat (Joystick Right) - Global Modifier
-    if (fxEnabled && _perfState->globalStepRepeat > 0 && !effects.trigger) {
-        if (_lastPlayedStep.trigger) {
-            effects = _lastPlayedStep; // Reuse the previous step's data
-            effects.trigger = true;
-        }
+    // Apply X axis
+    if (_songData) {
+        uint8_t effX = _songData->getEffectX(_trackIndex);
+        int8_t magX = _songData->getMagX(_trackIndex);
+        applyEffect(effX, magX, _perfState->joyX, effects);
     }
 
-    // If the step still isn't triggering, we can exit early
-    if (!effects.trigger) return;
-
-    // 4. CV Transpose (Encoder B)
-    if (fxEnabled) {
-        int32_t workingCV = (int32_t)effects.cv + _perfState->cvOffset[_trackIndex];
-        if (workingCV < 0) workingCV = 0;
-        if (workingCV > 4095) workingCV = 4095;
-        effects.cv = (uint16_t)workingCV;
-    }
-
-    // 5. Randomize (Joystick Up) - Global Modifier
-    if (fxEnabled && _perfState->globalRandomize > 0) {
-        // Random CV jump (applied before quantizer)
-        int32_t workingCV = (int32_t)effects.cv + random(-1000, 1001);
-        if (workingCV < 0) workingCV = 0;
-        if (workingCV > 4095) workingCV = 4095;
-        effects.cv = (uint16_t)workingCV;
-        
-        // Occasional random ratchet
-        if (random(0, 3) == 0) {
-            effects.ratchet = random(1, 5);
-        }
-    }
-
-    // 6. Probability Reduce (Joystick Down) - Global Modifier
-    if (fxEnabled && _perfState->globalProbReduce > 0) {
-        // 1=75%, 2=50%, 3=25%
-        effects.probability = (effects.probability * (4 - _perfState->globalProbReduce)) / 4;
-    }
-
-    // 7. Gate Hold (Joystick Left) - Global Modifier
-    if (fxEnabled && _perfState->globalGateHold > 0) {
-        // Extend gate time (2x or 3x or 4x)
-        int g = effects.gatePercent * (1 + _perfState->globalGateHold);
-        if (g > 99) g = 99;
-        effects.gatePercent = g;
+    // Apply Y axis
+    if (_songData) {
+        uint8_t effY = _songData->getEffectY(_trackIndex);
+        int8_t magY = _songData->getMagY(_trackIndex);
+        applyEffect(effY, magY, _perfState->joyY, effects);
     }
 }
 
@@ -169,7 +199,6 @@ void StepSequencer::onStep() {
     uint64_t now = micros();
     uint8_t stepIndex = _currentStep;
 
-    // Apply swing delay to odd-numbered steps
     uint64_t stepStartTime = now;
     uint8_t microtimingValue = _pattern->getMicrotiming(stepIndex);
     uint8_t ratchet = _pattern->getRatchet(stepIndex);
@@ -181,27 +210,25 @@ void StepSequencer::onStep() {
         stepStartTime += swingDelay;
     }
     
-    // Determine if step triggers
     bool stepOn = _pattern->getOn(stepIndex);
     uint8_t probability = _pattern->getProbability(stepIndex);
     bool triggers = stepOn && (random(0, 99) < probability);
     
-    // ===== APPLY PERFORMANCE EFFECTS =====
     StepEffects effects;
     effects.cv = _pattern->getCV(stepIndex);
     effects.gatePercent = _pattern->getGateLength(stepIndex);
     effects.probability = probability;
     effects.ratchet = ratchet;
+    effects.attack = _pattern->getAttack(stepIndex);
+    effects.decay = _pattern->getDecay(stepIndex);
     effects.trigger = triggers;
 
     processEffects(effects);
 
-    // Update local variables with effects
     triggers = effects.trigger;
     ratchet = effects.ratchet;
     uint8_t gatePercent = effects.gatePercent;
 
-    // Save this step for Step Repeat (before pushing queues)
     if (triggers) {
         _lastPlayedStep = effects;
     }
@@ -212,17 +239,13 @@ void StepSequencer::onStep() {
 
         if (_resetOnStep) {
             if (gatePercent > 1) {
-                while (!_gateQueue->isEmpty()) {
-                    _gateQueue->pop();
-                }
+                while (!_gateQueue->isEmpty()) _gateQueue->pop();
             }
         } else {
             while (!_gateQueue->isEmpty()) {
                 const GateEvent& event = _gateQueue->peek();
                 if (event.type == GateEvent::GATE_OFF) {
-                    if (event.timestamp > oldGateOffTimestamp) {
-                        oldGateOffTimestamp = event.timestamp;
-                    }
+                    if (event.timestamp > oldGateOffTimestamp) oldGateOffTimestamp = event.timestamp;
                 }
                 _gateQueue->pop();
             }
@@ -230,11 +253,9 @@ void StepSequencer::onStep() {
 
         if (triggers && gatePercent > 0) {
             uint64_t gateDuration = calculateDurationUs(gatePercent);
-            
             _gateQueue->push(stepStartTime, GateEvent::GATE_ON);
             
             uint64_t newGateOffTime = stepStartTime + gateDuration;
-            
             if (!_resetOnStep && (oldGateOffTimestamp > newGateOffTime)) {
                 _gateQueue->push(oldGateOffTimestamp, GateEvent::GATE_OFF);
             } else {
@@ -248,20 +269,14 @@ void StepSequencer::onStep() {
 
             for (uint8_t hit = 1; hit < ratchet; hit++) {
                 if (random(0, 99) >= effects.probability) continue;
-                
                 uint64_t hitTime = firstHitTime + (hit * ratchetSpacing);
-                
                 _gateQueue->push(hitTime, GateEvent::GATE_ON);
                 
                 uint64_t gateOffTime = hitTime + ratchetSpacing / 2;
-                if (gateOffTime > firstHitTime + stepDuration) {
-                    gateOffTime = firstHitTime + stepDuration;
-                }
+                if (gateOffTime > firstHitTime + stepDuration) gateOffTime = firstHitTime + stepDuration;
                 
                 if (!_resetOnStep && (hit == ratchet - 1)) {
-                    if (oldGateOffTimestamp > gateOffTime) {
-                        gateOffTime = oldGateOffTimestamp;
-                    }
+                    if (oldGateOffTimestamp > gateOffTime) gateOffTime = oldGateOffTimestamp;
                 }
                 _gateQueue->push(gateOffTime, GateEvent::GATE_OFF);
             }
@@ -270,88 +285,66 @@ void StepSequencer::onStep() {
         }
     }
     
-    // ===== CV QUEUE ===== (tracks 0-3 only)
+    // ===== CV QUEUE =====
     if (_cvQueue && triggers) {
-        // CV Hold check: if active, skip pushing new CV events entirely.
-        // The queue will gracefully finish any pending glides.
-        bool cvHold = (_perfState && _perfState->active && 
-                       _perfState->trackEnabled[_trackIndex] && 
-                       _perfState->globalCvHold);
-
-        if (!cvHold) {
-            while (!_cvQueue->isEmpty()) {
-                _cvQueue->pop();
-            }
-            
-            uint16_t targetDAC = effects.cv;
-            if (targetDAC < _minCV) targetDAC = _minCV;
-            if (targetDAC > _maxCV) targetDAC = _maxCV;
-            if (_quantizerEnabled && _quantizer != nullptr) {
-                targetDAC = _quantizer->quantize(targetDAC);
-            }
-            
-            uint8_t attack = _pattern->getAttack(stepIndex);
-            uint8_t decay = _pattern->getDecay(stepIndex);
-            
-            uint64_t attackUs = calculateDurationUs(attack);
-            uint64_t decayUs = calculateDurationUs(decay);
-            
-            if (_resetOnStep) {
-                if (attack == 0 && decay == 0) {
-                    _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
-                } else if (attack > 0 && decay == 0) {
-                    _cvQueue->push(stepStartTime, 0, CVEvent::CV_STEP);
-                    _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
-                } else if (attack == 0 && decay > 0) {
-                    _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
-                    _cvQueue->push(stepStartTime + decayUs, 0, CVEvent::CV_SMOOTH);
-                } else {
-                    _cvQueue->push(stepStartTime, 0, CVEvent::CV_STEP);
-                    _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
-                    _cvQueue->push(stepStartTime + attackUs + decayUs, 0, CVEvent::CV_SMOOTH);
-                }
+        while (!_cvQueue->isEmpty()) _cvQueue->pop();
+        
+        uint16_t targetDAC = effects.cv;
+        if (targetDAC < _minCV) targetDAC = _minCV;
+        if (targetDAC > _maxCV) targetDAC = _maxCV;
+        if (_quantizerEnabled && _quantizer != nullptr) targetDAC = _quantizer->quantize(targetDAC);
+        
+        uint64_t attackUs = calculateDurationUs(effects.attack);
+        uint64_t decayUs = calculateDurationUs(effects.decay);
+        
+        if (_resetOnStep) {
+            if (effects.attack == 0 && effects.decay == 0) {
+                _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
+            } else if (effects.attack > 0 && effects.decay == 0) {
+                _cvQueue->push(stepStartTime, 0, CVEvent::CV_STEP);
+                _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
+            } else if (effects.attack == 0 && effects.decay > 0) {
+                _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
+                _cvQueue->push(stepStartTime + decayUs, 0, CVEvent::CV_SMOOTH);
             } else {
-                if (attack == 0 && decay == 0) {
-                    _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
-                } else if (targetDAC > _currentDACValue && attack > 0) {
-                    _cvQueue->push(stepStartTime, _currentDACValue, CVEvent::CV_STEP);
-                    _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
-                } else if (targetDAC < _currentDACValue && decay > 0) {
-                    _cvQueue->push(stepStartTime, _currentDACValue, CVEvent::CV_STEP);
-                    _cvQueue->push(stepStartTime + decayUs, targetDAC, CVEvent::CV_SMOOTH);
-                } else {
-                    _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
-                }
+                _cvQueue->push(stepStartTime, 0, CVEvent::CV_STEP);
+                _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
+                _cvQueue->push(stepStartTime + attackUs + decayUs, 0, CVEvent::CV_SMOOTH);
+            }
+        } else {
+            if (effects.attack == 0 && effects.decay == 0) {
+                _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
+            } else if (targetDAC > _currentDACValue && effects.attack > 0) {
+                _cvQueue->push(stepStartTime, _currentDACValue, CVEvent::CV_STEP);
+                _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
+            } else if (targetDAC < _currentDACValue && effects.decay > 0) {
+                _cvQueue->push(stepStartTime, _currentDACValue, CVEvent::CV_STEP);
+                _cvQueue->push(stepStartTime + decayUs, targetDAC, CVEvent::CV_SMOOTH);
+            } else {
+                _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
             }
         }
     }
     
-    // Advance to next step
     _currentStep++;
-    if (_currentStep >= _pattern->getNumSteps()) {
-        _currentStep = 0;
-    }
+    if (_currentStep >= _pattern->getNumSteps()) _currentStep = 0;
 }
 
 void StepSequencer::processStepOutput() {
     uint64_t now = micros();
     
-    // ===== GATE OUTPUT =====
     if (_gateQueue) {
         while (!_gateQueue->isEmpty() && _gateQueue->peek().timestamp <= now) {
             const GateEvent& event = _gateQueue->peek();
             bool newGateState = (event.type == GateEvent::GATE_ON);
-            
             if (newGateState != _currentGateOutput) {
                 _currentGateOutput = newGateState;
                 _gateOutputChanged = true;
             }
-            
             _gateQueue->pop();
         }
     }
     
-    // ===== CV OUTPUT =====
     if (_cvQueue) {
         while (!_cvQueue->isEmpty() && _cvQueue->peek().timestamp <= now) {
             const CVEvent& event = _cvQueue->peek();
@@ -363,20 +356,15 @@ void StepSequencer::processStepOutput() {
         
         if (!_cvQueue->isEmpty()) {
             const CVEvent& nextEvent = _cvQueue->peek();
-            
             if (nextEvent.transitionMode == CVEvent::CV_SMOOTH && nextEvent.timestamp > now) {
                 if (_lastCVEventTimestamp > 0 && _lastCVEventTimestamp < nextEvent.timestamp) {
                     uint64_t totalDuration = nextEvent.timestamp - _lastCVEventTimestamp;
                     uint64_t elapsed = now - _lastCVEventTimestamp;
-                    
                     if (elapsed < totalDuration) {
                         float progress = (float)elapsed / (float)totalDuration;
                         uint16_t interpolatedValue = _lastCVEventValue + 
                             (uint16_t)(progress * (nextEvent.value - _lastCVEventValue));
-                        
-                        if (interpolatedValue != _currentDACValue) {
-                            _currentDACValue = interpolatedValue;
-                        }
+                        if (interpolatedValue != _currentDACValue) _currentDACValue = interpolatedValue;
                     }
                 }
             }
@@ -384,35 +372,24 @@ void StepSequencer::processStepOutput() {
     }
 }
 
-void StepSequencer::renderToDisplay() {
-    _ui.draw();
-}
-
-void StepSequencer::onEnterUI() {
-    _ui.enter();
-}
+void StepSequencer::renderToDisplay() { _ui.draw(); }
+void StepSequencer::onEnterUI() { _ui.enter(); }
 
 void StepSequencer::setMinCV(uint16_t minCV) {
-    if (minCV <= _maxCV) {
-        _minCV = minCV;
-    }
+    if (minCV <= _maxCV) _minCV = minCV;
 }
 
 void StepSequencer::setMaxCV(uint16_t maxCV) {
-    if (maxCV >= _minCV) {
-        _maxCV = maxCV;
-    }
+    if (maxCV >= _minCV) _maxCV = maxCV;
 }
 
 StepSequencer::CopiedStep StepSequencer::_copiedStep = {
     false, 0, 0, 0, 0, 0, 1, 0, 0, 0, false
 };
 
-void StepSequencer::copyStep(const StepPattern* pattern, uint8_t stepIndex,
-                              uint8_t trackIndex) {
+void StepSequencer::copyStep(const StepPattern* pattern, uint8_t stepIndex, uint8_t trackIndex) {
     if (!pattern) return;
     if (stepIndex >= pattern->getNumSteps()) return;
-
     _copiedStep.on          = pattern->getOn(stepIndex);
     _copiedStep.cv          = pattern->getCV(stepIndex);
     _copiedStep.probability = pattern->getProbability(stepIndex);
@@ -429,7 +406,6 @@ void StepSequencer::copyStep(const StepPattern* pattern, uint8_t stepIndex,
 void StepSequencer::pasteStep(StepPattern* pattern, uint8_t stepIndex) {
     if (!pattern || !_copiedStep.hasData) return;
     if (stepIndex >= pattern->getNumSteps()) return;
-
     pattern->setOn(stepIndex,          _copiedStep.on);
     pattern->setCV(stepIndex,          _copiedStep.cv);
     pattern->setProbability(stepIndex, _copiedStep.probability);

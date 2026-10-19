@@ -1,5 +1,5 @@
 #include "SongUI.h"
-#include "SongSequencer.h" // Required to access PerformanceState definition
+#include "SongSequencer.h"
 
 SongUI::SongUI(DisplayManager& display, UserInput& userInput, SongData& songData)
     : _display(display), _userInput(userInput), _songData(songData),
@@ -11,22 +11,27 @@ SongUI::SongUI(DisplayManager& display, UserInput& userInput, SongData& songData
       _currentPlayingStep(-1), _playbackProgress(0), _needsSave(false) {
 }
 
-SongUI::~SongUI() {
-}
+SongUI::~SongUI() {}
 
-void SongUI::begin() {
-}
+void SongUI::begin() {}
 
 void SongUI::update() {
     handleNavigation();
     handleEncoders();
     handleButtons();
-    // Auto‑revert to pattern preview after 3 seconds of encoder inactivity
     if (!_showPattern) {
         unsigned long lastActivity = max(_lastEncoderATime, _lastEncoderBTime);
-        if (millis() - lastActivity >= 3000) {
-            _showPattern = true;
-        }
+        if (millis() - lastActivity >= 3000) _showPattern = true;
+    }
+}
+
+char SongUI::getEffectChar(uint8_t eff) {
+    switch (eff) {
+        case 1: return 'C'; // Changed from 'T'
+        case 2: return 'S';
+        case 3: return 'R';
+        case 4: return 'D';
+        default: return '-';
     }
 }
 
@@ -36,36 +41,51 @@ void SongUI::draw(PerformanceState* perf) {
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
     
-    // Header - track titles
-    int titleY = isPerf ? 2 : 0; // Track titles move down 2 pixels in perf mode
+    int titleY = isPerf ? 2 : 0;
     for (int i = 0; i < NUM_TRACKS; i++) {
         bool muted = (isPerf && perf->trackMuted[i]);
-        bool enabled = (isPerf && perf->trackEnabled[i]);
+        bool selX = (isPerf && perf->selectedTrackX == i);
+        bool selY = (isPerf && perf->selectedTrackY == i);
         
         char label[4];
         if (muted) {
-            sprintf(label, "M%d", i + 1);
+            sprintf(label, "M ");
+        } else if (isPerf) {
+            char ex = getEffectChar(_songData.getEffectX(i));
+            char ey = getEffectChar(_songData.getEffectY(i));
+            if (ex == '-' && ey == '-') {
+                sprintf(label, "T%d", i + 1);
+            } else {
+                sprintf(label, "%c%c", ex, ey);
+            }
         } else {
             sprintf(label, "T%d", i + 1);
         }
         
-        if (enabled) {
-            // Inverted background for FX enabled tracks
-            _display.fillRect(_trackXPositions[i] - 1, titleY - 1, 18, 9, _display.colorWhite());
-            _display.setTextColor(_display.colorBlack());
-            _display.printAt(label, _trackXPositions[i] + 1, titleY, ALIGN_LEFT);
-            _display.setTextColor(_display.colorWhite());
-        } else {
-            _display.printAt(label, _trackXPositions[i] + 2, titleY, ALIGN_LEFT);
+        // Draw character by character to handle individual selection inversion
+        for (int c = 0; c < 2; c++) {
+            int x = _trackXPositions[i] + 2 + c * 6;
+            bool invert = (c == 0 && selX) || (c == 1 && selY);
+            
+            if (invert) {
+                _display.fillRect(x - 1, titleY - 1, 7, 9, _display.colorWhite());
+                _display.setTextColor(_display.colorBlack());
+            } else {
+                _display.setTextColor(_display.colorWhite());
+            }
+            
+            char cbuf[2] = {label[c], '\0'};
+            _display.printAt(cbuf, x, titleY, ALIGN_LEFT);
         }
     }
     
-    // Hide the horizontal line in performance mode
+    // Reset text color so it doesn't leak into the pattern rows
+    _display.setTextColor(_display.colorWhite());
+    
     if (!isPerf) {
         _display.drawLine(0, 10, 128, 10, _display.colorWhite());
     }
     
-    // Draw song steps data
     for (int row = 0; row < ROWS_PER_PAGE; row++) {
         int stepNum = _scrollOffset + row;
         if (stepNum >= _songData.getLength()) break;
@@ -86,13 +106,9 @@ void SongUI::draw(PerformanceState* perf) {
         }
         
         for (int col = 0; col < NUM_TRACKS; col++) {
-            // Hide patterns for muted tracks
-            if (isPerf && perf->trackMuted[col]) {
-                continue;
-            }
+            if (isPerf && perf->trackMuted[col]) continue;
             
             int x = _trackXPositions[col];
-            
             if (_showPattern) {
                 drawPatternPreview(_songData.getPattern(col, stepNum), x, y);
             } else {
@@ -102,7 +118,7 @@ void SongUI::draw(PerformanceState* perf) {
         }
     }
     
-    // Draw Loop Lines
+    // Loop Lines
     for (int row = 0; row < ROWS_PER_PAGE; row++) {
         int stepNum = _scrollOffset + row;
         if (stepNum >= _songData.getLength()) break;
@@ -115,7 +131,6 @@ void SongUI::draw(PerformanceState* perf) {
             if (targetIdx >= _scrollOffset && targetIdx < _scrollOffset + ROWS_PER_PAGE) {
                 int targetRow = targetIdx - _scrollOffset;
                 int yTarget = 14 + targetRow * 10 + 4;
-                
                 _display.drawLine(0, yTarget, 0, yCurrent, _display.colorWhite());
                 _display.drawLine(0, yTarget, 2, yTarget, _display.colorWhite());
                 _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
@@ -131,22 +146,12 @@ void SongUI::draw(PerformanceState* perf) {
         }
     }
     
-    // Cursor / Selection Frame
-    if (isPerf) {
-        // Performance Mode: Frame around selected track header, 1 pixel higher
-        int selX = _trackXPositions[perf->selectedTrack] - 2;
-        _display.drawRect(selX, 0, 20, 11, _display.colorWhite());
-    } else {
-        // Normal Mode: Frame around selected cell
+    if (!isPerf) {
         if (_cursorCol >= 1 && _cursorCol <= NUM_TRACKS) {
             int cursorX = _trackXPositions[_cursorCol - 1] - 1;
             int cursorY = 14 + _cursorRow * 10 - 2;
             _display.drawRect(cursorX, cursorY, 18, 10, _display.colorWhite());
         }
-    }
-    
-    // Status bar (Only draw default if not in performance mode)
-    if (!isPerf) {
         drawStatusBar();
     }
 }
@@ -171,7 +176,6 @@ void SongUI::drawPatternPreview(StepPattern& pattern, int x, int y) {
                 _display.fillRect(squareX, lineY - 1, 2, 2, _display.colorWhite());
             }
         }
-        
         lineY += 2;
     }
 }
@@ -200,10 +204,8 @@ void SongUI::handleNavigation() {
                 _lastNavTime = now;
             }
         }
-        
         if (dy != 0) {
             int newRow = _cursorRow + dy;
-            
             if (newRow >= 0 && newRow < ROWS_PER_PAGE) {
                 _cursorRow = newRow;
                 _lastNavTime = now;
@@ -228,7 +230,6 @@ void SongUI::handleEncoders() {
     int track = _cursorCol - 1;
     
     if (track >= 0 && track < NUM_TRACKS && step < _songData.getLength()) {
-        // Encoder A: Rotate pattern based on position change
         long currentEncAPos = _userInput.encoder_a.position;
         if (currentEncAPos != _lastEncoderAPos) {
             int delta = (currentEncAPos > _lastEncoderAPos) ? 1 : -1;
@@ -239,11 +240,9 @@ void SongUI::handleEncoders() {
             _lastEncoderAPos = currentEncAPos;
             _lastEncoderATime = millis();
             _showPattern = true;
-            // Signal that project needs saving
             _needsSave = true;
         }
         
-        // Encoder B: Cycle through divider indices based on position change
         long currentEncBPos = _userInput.encoder_b.position;
         if (currentEncBPos != _lastEncoderBPos) {
             int delta = (currentEncBPos > _lastEncoderBPos) ? -1 : 1;
@@ -265,21 +264,17 @@ void SongUI::handleEncoders() {
 }
 
 void SongUI::handleButtons() {
-    // Copy
     if (_userInput.encoder_a_button.just_released) {
         int currentStep = _scrollOffset + _cursorRow;
         int currentTrack = _cursorCol - 1;
-        
         if (currentTrack >= 0 && currentTrack < NUM_TRACKS && currentStep < _songData.getLength()) {
             _songData.copyPattern(currentTrack, currentStep);
         }
     }
     
-    // Paste
     if (_userInput.encoder_b_button.just_released && _songData.hasCopiedData()) {
         int currentStep = _scrollOffset + _cursorRow;
         int currentTrack = _cursorCol - 1;
-        
         if (currentTrack >= 0 && currentTrack < NUM_TRACKS && currentStep < _songData.getLength()) {
             _songData.pastePattern(currentTrack, currentStep);
             _needsSave = true;
@@ -287,18 +282,9 @@ void SongUI::handleButtons() {
     }
 }
 
-bool SongUI::needsSave() const {
-    return _needsSave;
-}
-
-void SongUI::clearSaveFlag() {
-    _needsSave = false;
-}
-
-void SongUI::setSaveFlag() {
-    _needsSave = true;
-}
-
+bool SongUI::needsSave() const { return _needsSave; }
+void SongUI::clearSaveFlag() { _needsSave = false; }
+void SongUI::setSaveFlag() { _needsSave = true; }
 void SongUI::resetEncoderTracking() {
     _lastEncoderAPos = _userInput.encoder_a.position;
     _lastEncoderBPos = _userInput.encoder_b.position;
@@ -308,7 +294,5 @@ void SongUI::drawProgressBar(int x, int y, int width, int height, int percent) {
     if (percent > 100) percent = 100;
     _display.drawRect(x, y, width, height, _display.colorWhite());
     int fillWidth = (width - 2) * percent / 100;
-    if (fillWidth > 0) {
-        _display.fillRect(x + 1, y + 1, fillWidth, height - 2, _display.colorWhite());
-    }
+    if (fillWidth > 0) _display.fillRect(x + 1, y + 1, fillWidth, height - 2, _display.colorWhite());
 }

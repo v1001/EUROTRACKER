@@ -11,24 +11,19 @@
 
 struct PerformanceState {
     bool active = false;
-    int8_t selectedTrack = 0;
+    bool editMode = false;
+    bool editYAxis = false;
     
-    // Per-track settings
-    bool trackEnabled[6] = {false}; // Inverted header, enables global FX
-    bool trackMuted[6] = {false};   // "M1" instead of "T1", hides patterns
-    int16_t cvOffset[6] = {0};      // Per-track transpose (Encoder B rotate)
+    int8_t selectedTrackX = 0;
+    int8_t selectedTrackY = 0;
+    bool trackMuted[6] = {false};
     
-    // Global modifiers (apply ONLY to tracks where trackEnabled == true)
-    bool globalCvHold = false;      // Encoder B click
-    int8_t globalStepRepeat = 0;    // Joystick Right (0=Off, 1=1/4, 2=1/2, 3=1/1)
-    int8_t globalGateHold = 0;      // Joystick Left (0=Off, 1=2x, 2=3x, 3=4x)
-    int8_t globalRandomize = 0;     // Joystick Up (0=Off, 1=Low, 2=Med, 3=High)
-    int8_t globalProbReduce = 0;    // Joystick Down (0=Off, 1=75%, 2=50%, 3=25%)
+    int8_t joyX = 0;
+    int8_t joyY = 0;
 };
 
 class SongSequencer {
 public:
-    // Song playback states
     enum SongState {
         STATE_STOP,
         STATE_PLAY_SONG,
@@ -47,7 +42,6 @@ public:
     void processClockTick(uint16_t tickCount);
     void processOutputs();
     
-    // Sequencer mode management
     void enterSequencerMode(int track, int step);
     void exitSequencerMode();
     void scheduleSequencerMode(int track, int step);
@@ -62,23 +56,19 @@ public:
     void drawPerformanceUI();
     PerformanceState& getPerformanceState() { return _perfState; }
     
-    // Getters
     SongState getSongState() const { return _songState; }
     int getSelectedTrack() const { return _songUI.getSelectedTrack(); }
     int getSelectedStep() const { return _songUI.getSelectedStep(); }
     int getPlayingStep() const { return _currentPlayStep; }
     bool isInSequencerMode() const {return _sequencerModeActive; }
 
-    // Expose save flags for Core 0 autosave logic
     bool needsSave() const { return _songUI.needsSave(); }
     void clearSaveFlag() { _songUI.clearSaveFlag(); }
 
-    // Structural Edits
     bool insertStep(int selectedStep);
     bool deleteStep(int selectedStep);
     bool cloneStep(int selectedStep);
     
-    // Loop Edits (mutex protected)
     bool setStepLoop(int stepIndex, int targetIndex, uint8_t count);
     void clearStepLoop(int stepIndex);
 
@@ -90,10 +80,8 @@ public:
     bool fileExists(const char* filename);
 
     void newCurrentProject();
-
     void resetEncoderTracking();
     void startPlayback();
-
     void markProjectDirty();
     void previewDAC(int track, uint16_t value);
 
@@ -112,22 +100,23 @@ private:
     StepSequencer* _sequencers[NUM_TRACKS];
     uint8_t _stepLoopCounters[MAX_SONG_LENGTH];
 
-    // Performance Mode State
     PerformanceState _perfState;
     unsigned long _lastPerfAnimTime;
+    unsigned long _lastJoyMoveTime;
     uint8_t _perfAnimFrame;
     long _perfLastEncAPos;
     long _perfLastEncBPos;
     char _perfPopupText[32];
     unsigned long _perfPopupTime;
 
+    const char* getEffectName(uint8_t eff);
+    const char* getShortEffectDesc(uint8_t eff, bool pos);
+    void formatEffectValue(int track, bool isY, char* buf, size_t len);
     void showPerfPopup(const char* text);
 
-    // Event queues
     GateQueue _gateQueues[6];
     CVQueue _cvQueues[4];
 
-    // Mutex to protect SongData array shifts from the ISR
     portMUX_TYPE _songMutex = portMUX_INITIALIZER_UNLOCKED;
     
     volatile SongState _songState;

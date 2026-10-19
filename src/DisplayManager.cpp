@@ -251,19 +251,22 @@ void DisplayManager::drawHourglass(int x, int y) {
 }
 
 void DisplayManager::drawStaircase(int16_t x, int16_t y, uint8_t frame) {
-    // Moving horizontal lines.
-    for (int i = 0; i < 3; i++) {
-        // Calculate Y position based on frame and line index
-        int y_pos = (frame + i * 2) % 7;
-        
-        // Width interpolates from 4 (top) to 8 (bottom)
-        int w = 4 + (y_pos * 4) / 6;
-        
-        // Center the line inside the imaginary trapezoid
-        int start_x = x + 2 - (y_pos * 2) / 6;
-        int end_x = start_x + w - 1;
-        
-        drawLine(start_x, y + y_pos, end_x, y + y_pos, FB_WHITE);
+    // 500ms alternating period, driven by millis() for accuracy
+    bool phase = ((millis() / 500) % 2) == 0;
+    
+    // Icon occupies an 8x8 area at (x, y)
+    // Three symmetric horizontal lines, 3 pixels apart vertically
+    
+    if (phase) {
+        // Phase A: narrow top, wide bottom
+        drawLine(x + 2, y + 1, x + 6, y + 1, FB_WHITE);  // 5px, centered
+        drawLine(x + 1, y + 4, x + 7, y + 4, FB_WHITE);  // 7px, centered
+        drawLine(x,     y + 7, x + 8, y + 7, FB_WHITE);  // 9px, centered
+    } else {
+        // Phase B: wide top, narrow bottom
+        drawLine(x,     y + 1, x + 8, y + 1, FB_WHITE);  // 9px, centered
+        drawLine(x + 1, y + 4, x + 7, y + 4, FB_WHITE);  // 7px, centered
+        drawLine(x + 2, y + 7, x + 6, y + 7, FB_WHITE);  // 5px, centered
     }
 }
 
