@@ -96,45 +96,35 @@ void UserInput::initButton(OneButton* &btn, int pin,
 void UserInput::readInputs() {
     uint64_t current_time = millis();
     
-    // Read joystick
     joystick.x_raw = analogRead(JOYSTICK_X_PIN);
     joystick.y_raw = analogRead(JOYSTICK_Y_PIN);
     
-    // Asymmetric mapping using the full ADC range (0-4095).
-    // This normalizes both directions to ±100 even when the center
-    // is not at the ADC midpoint (e.g., center=1925 means full push
-    // to 4095 spans 2170 units while full pull to 0 spans 1925).
-    int x_delta = joystick.x_raw - joystick_x_center;
-    int x_pos;
-    if (x_delta >= 0) {
-        int range = 4095 - joystick_x_center;
-        x_pos = (range > 0) ? (x_delta * 100 / range) : 0;
-    } else {
-        int range = joystick_x_center;
-        x_pos = (range > 0) ? (x_delta * 100 / range) : 0;
-    }
-    
-    int y_delta = joystick.y_raw - joystick_y_center;
-    int y_pos;
-    if (y_delta >= 0) {
-        int range = 4095 - joystick_y_center;
-        y_pos = (range > 0) ? (y_delta * 100 / range) : 0;
-    } else {
-        int range = joystick_y_center;
-        y_pos = (range > 0) ? (y_delta * 100 / range) : 0;
-    }
-    
-    // Quantize to nearest 10 (physical resolution is ~10 units)
-    auto quantize = [](int v) {
-        return (v + (v >= 0 ? 5 : -5)) / 10 * 10;
+    auto map_axis = [](int raw, int center) -> int {
+        int delta = raw - center;
+        
+        // Determine the physical maximum travel in this direction
+        int range = (delta >= 0) ? (4095 - center) : center;
+        if (range <= 0) return 0;
+        
+        // 15% of the physical travel is the "spring snap" zone
+        int deadzone_raw = (range * 15) / 100;
+        int abs_delta = abs(delta);
+        
+        // If we are in the deadzone, output is 0
+        if (abs_delta < deadzone_raw) return 0;
+        
+        // Directly map [deadzone_raw, range] to [0, 99]
+        int usable_range = range - deadzone_raw;
+        int magnitude = ((abs_delta - deadzone_raw) * 99) / usable_range;
+        
+        // Clamp just in case of ADC overshoot
+        if (magnitude > 99) magnitude = 99;
+        
+        return (delta >= 0) ? magnitude : -magnitude;
     };
     
-    joystick.x_position = constrain(quantize(x_pos), -100, 100);
-    joystick.y_position = constrain(-quantize(y_pos), -100, 100);  // Invert Y
-    
-    // Apply deadzone
-    if (abs(joystick.x_position) < (int)joystick_deadzone) joystick.x_position = 0;
-    if (abs(joystick.y_position) < (int)joystick_deadzone) joystick.y_position = 0;
+    joystick.x_position = map_axis(joystick.x_raw, joystick_x_center);
+    joystick.y_position = -map_axis(joystick.y_raw, joystick_y_center);  // Invert Y
     
     joystick.is_centered = (joystick.x_position == 0 && joystick.y_position == 0);
     

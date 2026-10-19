@@ -444,7 +444,7 @@ void SongSequencer::updatePerformanceUI() {
     }
 
     if (!_perfState.editMode) {
-        // PLAY MODE
+        // ===== PLAY MODE =====
         if (_userInput.encoder_a.position != _perfLastEncAPos) {
             int delta = (_userInput.encoder_a.position > _perfLastEncAPos) ? 1 : -1;
             _perfState.selectedTrackX = (_perfState.selectedTrackX + delta + 6) % 6;
@@ -471,41 +471,57 @@ void SongSequencer::updatePerformanceUI() {
             _perfState.editYAxis = true;
         }
     } else {
-        // EDIT MODE
+        // ===== EDIT MODE =====
         int track = _perfState.editYAxis ? _perfState.selectedTrackY : _perfState.selectedTrackX;
         uint8_t eff = _perfState.editYAxis ? _songData.getEffectY(track) : _songData.getEffectX(track);
         int8_t mag = _perfState.editYAxis ? _songData.getMagY(track) : _songData.getMagX(track);
         bool isCv = (track < 4);
 
+        // 1. Effect Selection (Encoder A)
         if (_userInput.encoder_a.position != _perfLastEncAPos) {
             int delta = (_userInput.encoder_a.position > _perfLastEncAPos) ? 1 : -1;
+            
+            // Get the effect currently assigned to the OTHER axis
+            uint8_t otherEff = _perfState.editYAxis ? _songData.getEffectX(track) : _songData.getEffectY(track);
+            
+            // Cycle until we find an effect that is valid for this track type 
+            // AND is not currently used by the other axis.
             if (delta > 0) {
-                do { eff = (eff + 1) % 5; } while (!isCv && (eff == 1 || eff == 2));
+                do { 
+                    eff = (eff + 1) % 5; 
+                } while ((!isCv && (eff == 1 || eff == 2)) || (eff != 0 && eff == otherEff));
             } else {
-                do { eff = (eff + 4) % 5; } while (!isCv && (eff == 1 || eff == 2));
+                do { 
+                    eff = (eff + 4) % 5; 
+                } while ((!isCv && (eff == 1 || eff == 2)) || (eff != 0 && eff == otherEff));
             }
+            
             if (_perfState.editYAxis) _songData.setEffectY(track, eff);
             else _songData.setEffectX(track, eff);
             _perfLastEncAPos = _userInput.encoder_a.position;
         }
 
+        // 2. Depth Selection (Encoder B)
         if (_userInput.encoder_b.position != _perfLastEncBPos) {
             int delta = (_userInput.encoder_b.position > _perfLastEncBPos) ? 1 : -1;
             mag = mag + delta;
             if (mag > 4) mag = -4;
             if (mag < -4) mag = 4;
             if (mag == 0) mag = (delta > 0) ? 1 : -1;
+            
             if (_perfState.editYAxis) _songData.setMagY(track, mag);
             else _songData.setMagX(track, mag);
             _perfLastEncBPos = _userInput.encoder_b.position;
         }
 
+        // 3. Confirm and Exit (Click either encoder)
         if (_userInput.encoder_a_button.just_pressed || _userInput.encoder_b_button.just_pressed) {
             _perfState.editMode = false;
             saveCurrentProject();
         }
     }
 
+    // Animation
     if (millis() - _lastPerfAnimTime > 100) {
         _lastPerfAnimTime = millis();
         _perfAnimFrame = (_perfAnimFrame + 1) % 8;
@@ -563,24 +579,35 @@ void SongSequencer::drawPerformanceUI() {
         _display.fillRect(0, 0, 128, 64, _display.colorWhite());
         _display.setTextColor(_display.colorBlack());
         
-        // Column headers (aligned to their data columns)
+        // 1. Column Headers (aligned with the columns below)
         char buf[16];
-        snprintf(buf, sizeof(buf), "X=%+d", _perfState.joyX);
-        _display.printAt(buf, 8, 2, ALIGN_LEFT);
-        snprintf(buf, sizeof(buf), "Y=%+d", _perfState.joyY);
-        _display.printAt(buf, 58, 2, ALIGN_LEFT);
+        snprintf(buf, sizeof(buf), "%d", _userInput.joystick.x_raw);
+        _display.printAt(buf, 32, 2, ALIGN_LEFT);  // Aligns with X values
+        snprintf(buf, sizeof(buf), "%d", _userInput.joystick.y_raw);
+        _display.printAt(buf, 80, 2, ALIGN_LEFT);  // Aligns with Y values
         
-        // 6 track rows
+        // 2. Grid Lines
+        // Horizontal line separating headers from the table
+        _display.drawLine(0, 12, 127, 12, _display.colorBlack());
+        // Vertical line separating track numbers from X column
+        _display.drawLine(24, 0, 24, 63, _display.colorBlack());
+        // Vertical line separating X and Y columns
+        _display.drawLine(74, 0, 74, 63, _display.colorBlack());
+        
+        // 3. The 6 track rows
         for (int i = 0; i < 6; i++) {
             char valX[16], valY[16], label[8];
             formatEffectValue(i, false, valX, sizeof(valX));
             formatEffectValue(i, true, valY, sizeof(valY));
             
-            snprintf(label, sizeof(label), "%d:", i+1);
-            _display.printAt(label, 4, 14 + i * 8, ALIGN_LEFT);
-            _display.printAt(valX, 20, 14 + i * 8, ALIGN_LEFT);
-            _display.printAt(valY, 70, 14 + i * 8, ALIGN_LEFT);
+            int y = 14 + i * 8; // 8-pixel row spacing
+            snprintf(label, sizeof(label), "T%d", i+1);
+            
+            _display.printAt(label, 4, y, ALIGN_LEFT);
+            _display.printAt(valX, 32, y, ALIGN_LEFT);
+            _display.printAt(valY, 80, y, ALIGN_LEFT);
         }
+        
         _display.setTextColor(_display.colorWhite());
     }
 }
