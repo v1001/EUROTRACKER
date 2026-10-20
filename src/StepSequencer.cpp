@@ -142,9 +142,12 @@ void StepSequencer::applyEffect(uint8_t eff, int8_t mag, int joy, StepEffects& e
     } 
     else if (eff == 4) { // Density
         int n_max = round(1 + 3 * (abs(mag) / 4.0f));
+        
         if (scaled_joy > 0) {
-            int n = map(scaled_joy * 100, 1, 400, n_max, 1);
+            // High Density: Repeat steps, reduce gate time
+            int n = map((long)(scaled_joy * 100), 1, 400, n_max, 1);
             n = constrain(n, 1, n_max);
+            
             if (effects.trigger) {
                 _repeatCounter = 0;
             } else {
@@ -154,14 +157,31 @@ void StepSequencer::applyEffect(uint8_t eff, int8_t mag, int joy, StepEffects& e
                     effects.trigger = true;
                 }
             }
+            
+            // Reduce gate on time (up to 75% reduction at full push)
+            if (effects.trigger) {
+                int reduction = (int)((scaled_joy / 4.0f) * 75.0f);
+                effects.gatePercent = effects.gatePercent - (effects.gatePercent * reduction / 100);
+                if (effects.gatePercent < 1) effects.gatePercent = 1;
+            }
+            
         } else if (scaled_joy < 0) {
-            int n = map(abs(scaled_joy) * 100, 1, 400, 1, n_max);
+            // Low Density: Skip steps, increase gate time
+            int n = map((long)(abs(scaled_joy) * 100), 1, 400, 1, n_max);
             n = constrain(n, 1, n_max);
+            
             if (effects.trigger) {
                 _skipCounter++;
                 if ((_skipCounter % n) != 0) {
                     effects.trigger = false;
                 }
+            }
+            
+            // Increase gate on time (up to 75% increase at full pull)
+            if (effects.trigger) {
+                int increase = (int)((abs(scaled_joy) / 4.0f) * 75.0f);
+                effects.gatePercent = effects.gatePercent + (effects.gatePercent * increase / 100);
+                if (effects.gatePercent > 99) effects.gatePercent = 99;
             }
         }
     }
@@ -214,6 +234,7 @@ void StepSequencer::onStep() {
     uint8_t probability = _pattern->getProbability(stepIndex);
     bool triggers = stepOn && (random(0, 99) < probability);
     
+    // ===== APPLY PERFORMANCE EFFECTS =====
     StepEffects effects;
     effects.cv = _pattern->getCV(stepIndex);
     effects.gatePercent = _pattern->getGateLength(stepIndex);
@@ -222,15 +243,19 @@ void StepSequencer::onStep() {
     effects.attack = _pattern->getAttack(stepIndex);
     effects.decay = _pattern->getDecay(stepIndex);
     effects.trigger = triggers;
+    uint8_t baseGate = effects.gatePercent;
 
     processEffects(effects);
 
+    // Update local variables with effects
     triggers = effects.trigger;
     ratchet = effects.ratchet;
     uint8_t gatePercent = effects.gatePercent;
 
+    // Save this step for Step Repeat (before pushing queues)
     if (triggers) {
         _lastPlayedStep = effects;
+        _lastPlayedStep.gatePercent = baseGate; // overrides the modified gate
     }
     
     // ===== GATE QUEUE =====

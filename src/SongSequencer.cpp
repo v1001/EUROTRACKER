@@ -517,7 +517,7 @@ void SongSequencer::updatePerformanceUI() {
         // 3. Confirm and Exit (Click either encoder)
         if (_userInput.encoder_a_button.just_pressed || _userInput.encoder_b_button.just_pressed) {
             _perfState.editMode = false;
-            saveCurrentProject();
+            markProjectDirty();
         }
     }
 
@@ -581,9 +581,9 @@ void SongSequencer::drawPerformanceUI() {
         
         // 1. Column Headers (aligned with the columns below)
         char buf[16];
-        snprintf(buf, sizeof(buf), "%d", _userInput.joystick.x_raw);
+        snprintf(buf, sizeof(buf), "X=%+d", _perfState.joyX);
         _display.printAt(buf, 32, 2, ALIGN_LEFT);  // Aligns with X values
-        snprintf(buf, sizeof(buf), "%d", _userInput.joystick.y_raw);
+        snprintf(buf, sizeof(buf), "Y=%+d", _perfState.joyY);
         _display.printAt(buf, 80, 2, ALIGN_LEFT);  // Aligns with Y values
         
         // 2. Grid Lines

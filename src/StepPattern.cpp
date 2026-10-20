@@ -216,7 +216,7 @@ void StepPattern::clearAll() {
         _on[i] = false;
         _cv[i] = 0;
         _probability[i] = 99;
-        _gateLength[i] = 0;
+        _gateLength[i] = 8;
         _decay[i] = 0;
         _attack[i] = 0;
         _ratchet[i] = 1;
@@ -342,7 +342,7 @@ void StepPattern::setNumSteps(uint8_t numSteps) {
         new_on[i] = false;
         new_cv[i] = 0;
         new_probability[i] = 99;
-        new_gateLength[i] = 0;
+        new_gateLength[i] = 8;
         new_decay[i] = 0;
         new_attack[i] = 0;
         new_ratchet[i] = 1;
