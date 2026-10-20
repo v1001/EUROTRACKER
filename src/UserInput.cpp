@@ -96,18 +96,35 @@ void UserInput::initButton(OneButton* &btn, int pin,
 void UserInput::readInputs() {
     uint64_t current_time = millis();
     
-    // Read joystick
     joystick.x_raw = analogRead(JOYSTICK_X_PIN);
     joystick.y_raw = analogRead(JOYSTICK_Y_PIN);
     
-    // Convert to -100 to 100 range using calibrated center
-    joystick.x_position = map(joystick.x_raw - joystick_x_center, -2048, 2048, -100, 100);
-    joystick.y_position = map(joystick.y_raw - joystick_y_center, -2048, 2048, -100, 100);
-    joystick.y_position = -joystick.y_position;  // Inverted Y-axis
+    auto map_axis = [](int raw, int center) -> int {
+        int delta = raw - center;
+        
+        // Determine the physical maximum travel in this direction
+        int range = (delta >= 0) ? (4095 - center) : center;
+        if (range <= 0) return 0;
+        
+        // 15% of the physical travel is the "spring snap" zone
+        int deadzone_raw = (range * 15) / 100;
+        int abs_delta = abs(delta);
+        
+        // If we are in the deadzone, output is 0
+        if (abs_delta < deadzone_raw) return 0;
+        
+        // Directly map [deadzone_raw, range] to [0, 99]
+        int usable_range = range - deadzone_raw;
+        int magnitude = ((abs_delta - deadzone_raw) * 99) / usable_range;
+        
+        // Clamp just in case of ADC overshoot
+        if (magnitude > 99) magnitude = 99;
+        
+        return (delta >= 0) ? magnitude : -magnitude;
+    };
     
-    // Apply deadzone
-    if (abs(joystick.x_position) < (int)joystick_deadzone) joystick.x_position = 0;
-    if (abs(joystick.y_position) < (int)joystick_deadzone) joystick.y_position = 0;
+    joystick.x_position = map_axis(joystick.x_raw, joystick_x_center);
+    joystick.y_position = -map_axis(joystick.y_raw, joystick_y_center);  // Invert Y
     
     joystick.is_centered = (joystick.x_position == 0 && joystick.y_position == 0);
     

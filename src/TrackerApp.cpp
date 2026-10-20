@@ -2,7 +2,7 @@
 #include "MainMenu.h"
 #include "PatternMenu.h"
 #include "TrackMenu.h"
-#include "SongEditMenu.h" // NEW
+#include "SongEditMenu.h"
 
 TrackerApp::TrackerApp(DisplayManager& display, UserInput& userInput, OutputHandler& outputHandler)
     : _display(display), _userInput(userInput), _outputHandler(outputHandler),
@@ -68,6 +68,30 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
         _songSequencer.saveCurrentProject();
     }
 
+    // ===== PERFORMANCE MODE TRANSITIONS =====
+    unsigned long now = millis();
+    if (now - _lastStateTransitionTime > STATE_TRANSITION_COOLDOWN_MS) {
+        // Enter Performance Mode (Save + Encoder B simultaneously)
+        if (_currentUIState == STATE_SONG_UI && 
+            _userInput.save_button.pressed && 
+            _userInput.encoder_b_button.pressed) {
+            _lastStateTransitionTime = now;
+            _currentUIState = STATE_PERFORMANCE_MODE;
+            _songSequencer.enterPerformanceMode();
+        }
+        // Exit Performance Mode (Save button)
+        else if (_currentUIState == STATE_PERFORMANCE_MODE && _userInput.save_button.just_pressed) {
+            _lastStateTransitionTime = now;
+            _songSequencer.exitPerformanceMode();
+            _currentUIState = STATE_SONG_UI;
+            _songSequencer.resetEncoderTracking();
+            
+            // Consume the event so it doesn't toggle playback on the next tick
+            _userInput.save_button.just_pressed = false;
+            _userInput.save_button.just_released = false;
+        }
+    }
+
     switch (_currentUIState) {
         case STATE_SONG_UI:
             _songSequencer.update();
@@ -109,9 +133,13 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
                 static_cast<SongEditMenu*>(_songEditMenu)->draw();
             }
             break;
+            
+        case STATE_PERFORMANCE_MODE:
+            _songSequencer.updatePerformanceUI();
+            _songSequencer.drawPerformanceUI();
+            break;
     }
 
-    unsigned long now = millis();
     if (now - _lastStateTransitionTime <= STATE_TRANSITION_COOLDOWN_MS) return;
 
     // Song UI -> Sequencer UI

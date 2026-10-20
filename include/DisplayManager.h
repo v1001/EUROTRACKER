@@ -23,7 +23,6 @@ public:
     DisplayManager();
     ~DisplayManager();
 
-    // No longer needs to allocate memory, just initializes
     bool begin();
     void end();
     bool isReady() const { return true; }
@@ -37,7 +36,7 @@ public:
 
     void clear();
 
-    // ... (Drawing primitives remain unchanged) ...
+    // Drawing primitives
     void drawPixel(int16_t x, int16_t y, uint16_t color);
     void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color);
     void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
@@ -47,7 +46,7 @@ public:
     void drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color);
     void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color);
 
-    // ... (Text and Special symbols remain unchanged) ...
+    // Text
     void setTextSize(TextSize size) { _textSize = size; }
     void setTextColor(uint16_t fg) { _textColor = fg; }
     void setTextColor(uint16_t fg, uint16_t bg) { _textColor = fg; _textBgColor = bg; }
@@ -58,25 +57,27 @@ public:
     void printAt(const char* text, int16_t x, int16_t y, TextAlignment alignment = ALIGN_LEFT);
     void printCentered(const char* text, int16_t y);
     void clearLine(uint8_t lineNumber);
+
+    // Special symbols
     void drawQuarterNote(int x, int y);
     void drawPlaySign(int x, int y);
     void drawLoopSign(int x, int y);
     void drawHourglass(int x, int y);
+    void drawStaircase(int16_t x, int16_t y, uint8_t frame); // NEW
     void drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t percent, uint16_t color);
     void drawFrame(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t thickness, uint16_t color);
 
+    // Utility
     static int16_t width() { return DISPLAY_WIDTH; }
     static int16_t height() { return DISPLAY_HEIGHT; }
     uint16_t colorWhite() const { return FB_WHITE; }
     uint16_t colorBlack() const { return FB_BLACK; }
 
 private:
-    // Static arrays instead of dynamic allocation
     uint8_t _drawBuffer[DISPLAY_FRAMEBUFFER_SIZE];
     uint8_t _readBuffer[DISPLAY_FRAMEBUFFER_SIZE];
     std::atomic<bool> _needsUpdate;
 
-    // ... (Rest of private members remain unchanged) ...
     uint8_t _textSize;
     uint16_t _textColor;
     uint16_t _textBgColor;

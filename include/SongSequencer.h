@@ -9,9 +9,21 @@
 #include "StepSequencer.h"
 #include "EventQueue.h"
 
+struct PerformanceState {
+    bool active = false;
+    bool editMode = false;
+    bool editYAxis = false;
+    
+    int8_t selectedTrackX = 0;
+    int8_t selectedTrackY = 0;
+    bool trackMuted[6] = {false};
+    
+    int8_t joyX = 0;
+    int8_t joyY = 0;
+};
+
 class SongSequencer {
 public:
-    // Song playback states
     enum SongState {
         STATE_STOP,
         STATE_PLAY_SONG,
@@ -30,30 +42,33 @@ public:
     void processClockTick(uint16_t tickCount);
     void processOutputs();
     
-    // Sequencer mode management
     void enterSequencerMode(int track, int step);
     void exitSequencerMode();
     void scheduleSequencerMode(int track, int step);
     StepSequencer* getSequencer(int track);
     void setSyncStart(bool enabled) { _syncStart = enabled; }
     
-    // Getters
+    // Performance Mode
+    void enterPerformanceMode();
+    void exitPerformanceMode();
+    bool isPerformanceMode() const { return _perfState.active; }
+    void updatePerformanceUI();
+    void drawPerformanceUI();
+    PerformanceState& getPerformanceState() { return _perfState; }
+    
     SongState getSongState() const { return _songState; }
     int getSelectedTrack() const { return _songUI.getSelectedTrack(); }
     int getSelectedStep() const { return _songUI.getSelectedStep(); }
     int getPlayingStep() const { return _currentPlayStep; }
     bool isInSequencerMode() const {return _sequencerModeActive; }
 
-    // Expose save flags for Core 0 autosave logic
     bool needsSave() const { return _songUI.needsSave(); }
     void clearSaveFlag() { _songUI.clearSaveFlag(); }
 
-    // Structural Edits
     bool insertStep(int selectedStep);
     bool deleteStep(int selectedStep);
     bool cloneStep(int selectedStep);
     
-    // Loop Edits (mutex protected)
     bool setStepLoop(int stepIndex, int targetIndex, uint8_t count);
     void clearStepLoop(int stepIndex);
 
@@ -65,10 +80,8 @@ public:
     bool fileExists(const char* filename);
 
     void newCurrentProject();
-
     void resetEncoderTracking();
     void startPlayback();
-
     void markProjectDirty();
     void previewDAC(int track, uint16_t value);
 
@@ -87,11 +100,23 @@ private:
     StepSequencer* _sequencers[NUM_TRACKS];
     uint8_t _stepLoopCounters[MAX_SONG_LENGTH];
 
-    // Event queues
+    PerformanceState _perfState;
+    unsigned long _lastPerfAnimTime;
+    unsigned long _lastJoyMoveTime;
+    uint8_t _perfAnimFrame;
+    long _perfLastEncAPos;
+    long _perfLastEncBPos;
+    char _perfPopupText[32];
+    unsigned long _perfPopupTime;
+
+    const char* getEffectName(uint8_t eff);
+    const char* getShortEffectDesc(uint8_t eff, bool pos);
+    void formatEffectValue(int track, bool isY, char* buf, size_t len);
+    void showPerfPopup(const char* text);
+
     GateQueue _gateQueues[6];
     CVQueue _cvQueues[4];
 
-    // Mutex to protect SongData array shifts from the ISR
     portMUX_TYPE _songMutex = portMUX_INITIALIZER_UNLOCKED;
     
     volatile SongState _songState;

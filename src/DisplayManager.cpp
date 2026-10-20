@@ -19,8 +19,6 @@ bool DisplayManager::begin() {
     memset(_drawBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
     memset(_readBuffer, 0, DISPLAY_FRAMEBUFFER_SIZE);
     _isInitialized = true;
-    
-    // Force the first blank frame to be sent immediately
     _needsUpdate.store(true);
     return true;
 }
@@ -41,7 +39,7 @@ void DisplayManager::swapBuffers() {
 void DisplayManager::setPixel(int16_t x, int16_t y, uint8_t color) {
     if (!_drawBuffer) return;
     if (x < 0 || x >= DISPLAY_WIDTH || y < 0 || y >= DISPLAY_HEIGHT) return;
-    uint16_t idx = (y / 8) * DISPLAY_WIDTH + x;   // page * 128 + column
+    uint16_t idx = (y / 8) * DISPLAY_WIDTH + x;
     uint8_t bit = 1 << (y % 8);
     if (color) _drawBuffer[idx] |= bit;
     else       _drawBuffer[idx] &= ~bit;
@@ -59,9 +57,6 @@ void DisplayManager::drawPixel(int16_t x, int16_t y, uint16_t color) {
     setPixel(x, y, color ? 1 : 0);
 }
 
-// ----------------------------------------------------------------------
-// Drawing primitives (all use setPixel)
-// ----------------------------------------------------------------------
 void DisplayManager::drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, uint16_t color) {
     int16_t dx = abs(x1 - x0);
     int16_t dy = abs(y1 - y0);
@@ -142,9 +137,6 @@ void DisplayManager::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1
     }
 }
 
-// ----------------------------------------------------------------------
-// Text rendering using FreeMono9pt7b font
-// ----------------------------------------------------------------------
 void DisplayManager::drawChar(int16_t x, int16_t y, unsigned char c) {
     if (!_drawBuffer) return;
     if (c < 32 || c > 126) return;
@@ -198,7 +190,6 @@ void DisplayManager::print(const char* text) {
             _cursorX = 0;
             _cursorY += charHeight;
         } else {
-            // Wrap before drawing if needed
             if (_cursorX + charWidth > DISPLAY_WIDTH) {
                 _cursorX = 0;
                 _cursorY += charHeight;
@@ -232,7 +223,7 @@ void DisplayManager::clearLine(uint8_t lineNumber) {
 }
 
 // ----------------------------------------------------------------------
-// Special symbols (using existing draw primitives)
+// Special symbols
 // ----------------------------------------------------------------------
 void DisplayManager::drawQuarterNote(int x, int y) {
     fillCircle(x + 1, y, 1, FB_WHITE);
@@ -257,6 +248,26 @@ void DisplayManager::drawHourglass(int x, int y) {
     drawLine(x + 4, y + 4, x, y + 8, FB_WHITE);
     drawLine(x + 8, y, x + 4, y + 4, FB_WHITE);
     drawLine(x + 4, y + 4, x + 8, y + 8, FB_WHITE);
+}
+
+void DisplayManager::drawStaircase(int16_t x, int16_t y, uint8_t frame) {
+    // 500ms alternating period, driven by millis() for accuracy
+    bool phase = ((millis() / 500) % 2) == 0;
+    
+    // Icon occupies an 8x8 area at (x, y)
+    // Three symmetric horizontal lines, 3 pixels apart vertically
+    
+    if (phase) {
+        // Phase A: narrow top, wide bottom
+        drawLine(x + 2, y + 1, x + 6, y + 1, FB_WHITE);  // 5px, centered
+        drawLine(x + 1, y + 4, x + 7, y + 4, FB_WHITE);  // 7px, centered
+        drawLine(x,     y + 7, x + 8, y + 7, FB_WHITE);  // 9px, centered
+    } else {
+        // Phase B: wide top, narrow bottom
+        drawLine(x,     y + 1, x + 8, y + 1, FB_WHITE);  // 9px, centered
+        drawLine(x + 1, y + 4, x + 7, y + 4, FB_WHITE);  // 7px, centered
+        drawLine(x + 2, y + 7, x + 6, y + 7, FB_WHITE);  // 5px, centered
+    }
 }
 
 void DisplayManager::drawProgressBar(int16_t x, int16_t y, int16_t w, int16_t h, uint8_t percent, uint16_t color) {

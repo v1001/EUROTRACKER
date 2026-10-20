@@ -1,4 +1,6 @@
 #include "StepSequencer.h"
+#include "SongSequencer.h"
+#include "SongData.h"
 
 StepSequencer::StepSequencer(DisplayManager& display, UserInput& userInput)
     : _display(display), _userInput(userInput), _ui(display, userInput), _pattern(nullptr),
@@ -26,17 +28,17 @@ void StepSequencer::resetPosition() {
     _currentStep = 0;
     _lastCVEventValue = 0;
     _lastCVEventTimestamp = 0;
+    _lastPlayedStep.trigger = false;
+    _skipCounter = 0;
+    _repeatCounter = 0;
 }
 
 void StepSequencer::update() {
     if (!_pattern) return;
-    // Pass quantizer info to UI (by pointer)
     _ui.setQuantizer(_quantizerEnabled ? _quantizer : nullptr);
     _ui.setQuantizerEnabled(_quantizerEnabled);
 
     _ui.update();
-    
-    // Update UI with current step and duration for display
     _ui.setCurrentStep(_currentStep);
     
     renderToDisplay();
@@ -58,27 +60,21 @@ uint8_t StepSequencer::constrainValue(int value) {
 uint64_t StepSequencer::calculateDurationUs(uint8_t value) const {
     if (value == 0) return 0;
 
-    // Linear mapping of gate value to a multiplier of _stepDurationUs.
-    // Numerator represents 128th fractions of the step to allow exact integers.
     uint64_t num;
     if (value <= 24) {
-        // 1 to 24 maps to step/128 to step/4 (32/128)
         num = (value * 32) / 24;
     } else if (value <= 48) {
-        // 25 to 48 maps to step/4 to 2*step (256/128)
         num = 32 + (value - 24) * 224 / 24;
     } else if (value <= 72) {
-        // 49 to 72 maps to 2*step to 8*step (1024/128)
         num = 256 + (value - 48) * 32;
     } else if (value <= 96) {
-        // 73 to 96 maps to 8*step to 32*step (4096/128)
         num = 1024 + (value - 72) * 128;
     } else if (value == 97) {
-        num = 5120;   // 40 * step
+        num = 5120;
     } else if (value == 98) {
-        num = 6656;   // 52 * step
+        num = 6656;
     } else {
-        num = 8192;   // 64 * step
+        num = 8192;
     }
 
     return (_stepDurationUs * num) / 128;
@@ -105,16 +101,124 @@ void StepSequencer::onTimerTick(uint16_t tickCount) {
     }
 }
 
+void StepSequencer::applyEffect(uint8_t eff, int8_t mag, int joy, StepEffects& effects) {
+    if (eff == 0 || mag == 0) return;
+
+    // Scale: -4.0 to +4.0
+    float scaled_joy = (joy / 99.0f) * mag;
+
+    if (eff == 1) { // Transpose
+        int32_t offset = (int32_t)(scaled_joy * 205);
+        int32_t newCV = effects.cv + offset;
+        if (newCV < 0) newCV = 0;
+        if (newCV > 4095) newCV = 4095;
+        effects.cv = (uint16_t)newCV;
+    } 
+    else if (eff == 2) { // Slide
+        int offset = (int)(abs(scaled_joy) * 24);
+        if (scaled_joy > 0) {
+            effects.attack = constrainValue(effects.attack + offset);
+        } else if (scaled_joy < 0) {
+            effects.decay = constrainValue(effects.decay + offset);
+        }
+    } 
+    else if (eff == 3) { // Random
+        if (scaled_joy > 0) {
+            float chance = (scaled_joy / 4.0f) * 100.0f;
+            if (random(0, 100) < chance) {
+                int32_t offset = random(-205 * abs(mag), 205 * abs(mag) + 1);
+                int32_t newCV = effects.cv + offset;
+                if (newCV < 0) newCV = 0;
+                if (newCV > 4095) newCV = 4095;
+                effects.cv = (uint16_t)newCV;
+                
+                effects.ratchet = random(2, abs(mag) + 2);
+            }
+        } else if (scaled_joy < 0) {
+            float reduction = (abs(scaled_joy) / 4.0f) * 0.75f;
+            float newProb = effects.probability * (1.0f - reduction);
+            effects.probability = constrain((int)newProb, 1, 100);
+        }
+    } 
+    else if (eff == 4) { // Density
+        int n_max = round(1 + 3 * (abs(mag) / 4.0f));
+        
+        if (scaled_joy > 0) {
+            // High Density: Repeat steps, reduce gate time
+            int n = map((long)(scaled_joy * 100), 1, 400, n_max, 1);
+            n = constrain(n, 1, n_max);
+            
+            if (effects.trigger) {
+                _repeatCounter = 0;
+            } else {
+                _repeatCounter++;
+                if (_lastPlayedStep.trigger && (_repeatCounter % n) == 0) {
+                    effects = _lastPlayedStep;
+                    effects.trigger = true;
+                }
+            }
+            
+            // Reduce gate on time (up to 75% reduction at full push)
+            if (effects.trigger) {
+                int reduction = (int)((scaled_joy / 4.0f) * 75.0f);
+                effects.gatePercent = effects.gatePercent - (effects.gatePercent * reduction / 100);
+                if (effects.gatePercent < 1) effects.gatePercent = 1;
+            }
+            
+        } else if (scaled_joy < 0) {
+            // Low Density: Skip steps, increase gate time
+            int n = map((long)(abs(scaled_joy) * 100), 1, 400, 1, n_max);
+            n = constrain(n, 1, n_max);
+            
+            if (effects.trigger) {
+                _skipCounter++;
+                if ((_skipCounter % n) != 0) {
+                    effects.trigger = false;
+                }
+            }
+            
+            // Increase gate on time (up to 75% increase at full pull)
+            if (effects.trigger) {
+                int increase = (int)((abs(scaled_joy) / 4.0f) * 75.0f);
+                effects.gatePercent = effects.gatePercent + (effects.gatePercent * increase / 100);
+                if (effects.gatePercent > 99) effects.gatePercent = 99;
+            }
+        }
+    }
+}
+
+void StepSequencer::processEffects(StepEffects& effects) {
+    if (!_perfState || !_perfState->active) return;
+
+    // Mute check
+    if (_perfState->trackMuted[_trackIndex]) {
+        effects.trigger = false;
+        return;
+    }
+
+    // Apply X axis
+    if (_songData) {
+        uint8_t effX = _songData->getEffectX(_trackIndex);
+        int8_t magX = _songData->getMagX(_trackIndex);
+        applyEffect(effX, magX, _perfState->joyX, effects);
+    }
+
+    // Apply Y axis
+    if (_songData) {
+        uint8_t effY = _songData->getEffectY(_trackIndex);
+        int8_t magY = _songData->getMagY(_trackIndex);
+        applyEffect(effY, magY, _perfState->joyY, effects);
+    }
+}
+
 void StepSequencer::onStep() {
     if (!_pattern) return;
     
     _stepPending = false;
     
-    // Process current step (starts at 0)
     uint64_t now = micros();
     uint8_t stepIndex = _currentStep;
 
-    // Apply swing delay to odd-numbered steps (1,3,5,7...)
     uint64_t stepStartTime = now;
     uint8_t microtimingValue = _pattern->getMicrotiming(stepIndex);
     uint8_t ratchet = _pattern->getRatchet(stepIndex);
@@ -126,31 +230,47 @@ void StepSequencer::onStep() {
         stepStartTime += swingDelay;
     }
     
-    // Determine if step triggers (single probability check)
     bool stepOn = _pattern->getOn(stepIndex);
     uint8_t probability = _pattern->getProbability(stepIndex);
     bool triggers = stepOn && (random(0, 99) < probability);
     
+    // ===== APPLY PERFORMANCE EFFECTS =====
+    StepEffects effects;
+    effects.cv = _pattern->getCV(stepIndex);
+    effects.gatePercent = _pattern->getGateLength(stepIndex);
+    effects.probability = probability;
+    effects.ratchet = ratchet;
+    effects.attack = _pattern->getAttack(stepIndex);
+    effects.decay = _pattern->getDecay(stepIndex);
+    effects.trigger = triggers;
+    uint8_t baseGate = effects.gatePercent;
+
+    processEffects(effects);
+
+    // Update local variables with effects
+    triggers = effects.trigger;
+    ratchet = effects.ratchet;
+    uint8_t gatePercent = effects.gatePercent;
+
+    // Save this step for Step Repeat (before pushing queues)
+    if (triggers) {
+        _lastPlayedStep = effects;
+        _lastPlayedStep.gatePercent = baseGate; // overrides the modified gate
+    }
+    
     // ===== GATE QUEUE =====
     if (_gateQueue) {
         uint64_t oldGateOffTimestamp = 0;
-        uint8_t gatePercent = _pattern->getGateLength(stepIndex);
 
         if (_resetOnStep) {
-            // Only clear the queue if the new step actually has a gate.
-            // If gate is 0 or 1, allow the previous gate to bleed through.
             if (gatePercent > 1) {
-                while (!_gateQueue->isEmpty()) {
-                    _gateQueue->pop();
-                }
+                while (!_gateQueue->isEmpty()) _gateQueue->pop();
             }
         } else {
             while (!_gateQueue->isEmpty()) {
                 const GateEvent& event = _gateQueue->peek();
                 if (event.type == GateEvent::GATE_OFF) {
-                    if (event.timestamp > oldGateOffTimestamp) {
-                        oldGateOffTimestamp = event.timestamp;
-                    }
+                    if (event.timestamp > oldGateOffTimestamp) oldGateOffTimestamp = event.timestamp;
                 }
                 _gateQueue->pop();
             }
@@ -158,11 +278,9 @@ void StepSequencer::onStep() {
 
         if (triggers && gatePercent > 0) {
             uint64_t gateDuration = calculateDurationUs(gatePercent);
-            
             _gateQueue->push(stepStartTime, GateEvent::GATE_ON);
             
             uint64_t newGateOffTime = stepStartTime + gateDuration;
-            
             if (!_resetOnStep && (oldGateOffTimestamp > newGateOffTime)) {
                 _gateQueue->push(oldGateOffTimestamp, GateEvent::GATE_OFF);
             } else {
@@ -175,57 +293,42 @@ void StepSequencer::onStep() {
             uint64_t ratchetSpacing = stepDuration / ratchet;
 
             for (uint8_t hit = 1; hit < ratchet; hit++) {
-                if (random(0, 99) >= probability) continue;
-                
+                if (random(0, 99) >= effects.probability) continue;
                 uint64_t hitTime = firstHitTime + (hit * ratchetSpacing);
-                
                 _gateQueue->push(hitTime, GateEvent::GATE_ON);
                 
                 uint64_t gateOffTime = hitTime + ratchetSpacing / 2;
-                if (gateOffTime > firstHitTime + stepDuration) {
-                    gateOffTime = firstHitTime + stepDuration;
-                }
+                if (gateOffTime > firstHitTime + stepDuration) gateOffTime = firstHitTime + stepDuration;
                 
                 if (!_resetOnStep && (hit == ratchet - 1)) {
-                    if (oldGateOffTimestamp > gateOffTime) {
-                        gateOffTime = oldGateOffTimestamp;
-                    }
+                    if (oldGateOffTimestamp > gateOffTime) gateOffTime = oldGateOffTimestamp;
                 }
                 _gateQueue->push(gateOffTime, GateEvent::GATE_OFF);
             }
         } else if (!_resetOnStep && oldGateOffTimestamp > 0) {
-            // Keep mode: if gate is off or probability missed, preserve the old gate off
             _gateQueue->push(oldGateOffTimestamp, GateEvent::GATE_OFF);
         }
     }
     
-    // ===== CV QUEUE ===== (tracks 0-3 only)
+    // ===== CV QUEUE =====
     if (_cvQueue && triggers) {
-        while (!_cvQueue->isEmpty()) {
-            _cvQueue->pop();
-        }
+        while (!_cvQueue->isEmpty()) _cvQueue->pop();
         
-        // CV is a raw 16-bit DAC value (0-4095)
-        // If quantizer is enabled, snap to nearest note during playback
-        uint16_t targetDAC = _pattern->getCV(stepIndex);
+        uint16_t targetDAC = effects.cv;
         if (targetDAC < _minCV) targetDAC = _minCV;
         if (targetDAC > _maxCV) targetDAC = _maxCV;
-        if (_quantizerEnabled && _quantizer != nullptr) {
-            targetDAC = _quantizer->quantize(targetDAC);
-        }
-        uint8_t attack = _pattern->getAttack(stepIndex);
-        uint8_t decay = _pattern->getDecay(stepIndex);
+        if (_quantizerEnabled && _quantizer != nullptr) targetDAC = _quantizer->quantize(targetDAC);
         
-        uint64_t attackUs = calculateDurationUs(attack);
-        uint64_t decayUs = calculateDurationUs(decay);
+        uint64_t attackUs = calculateDurationUs(effects.attack);
+        uint64_t decayUs = calculateDurationUs(effects.decay);
         
         if (_resetOnStep) {
-            if (attack == 0 && decay == 0) {
+            if (effects.attack == 0 && effects.decay == 0) {
                 _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
-            } else if (attack > 0 && decay == 0) {
+            } else if (effects.attack > 0 && effects.decay == 0) {
                 _cvQueue->push(stepStartTime, 0, CVEvent::CV_STEP);
                 _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
-            } else if (attack == 0 && decay > 0) {
+            } else if (effects.attack == 0 && effects.decay > 0) {
                 _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
                 _cvQueue->push(stepStartTime + decayUs, 0, CVEvent::CV_SMOOTH);
             } else {
@@ -234,12 +337,12 @@ void StepSequencer::onStep() {
                 _cvQueue->push(stepStartTime + attackUs + decayUs, 0, CVEvent::CV_SMOOTH);
             }
         } else {
-            if (attack == 0 && decay == 0) {
+            if (effects.attack == 0 && effects.decay == 0) {
                 _cvQueue->push(stepStartTime, targetDAC, CVEvent::CV_STEP);
-            } else if (targetDAC > _currentDACValue && attack > 0) {
+            } else if (targetDAC > _currentDACValue && effects.attack > 0) {
                 _cvQueue->push(stepStartTime, _currentDACValue, CVEvent::CV_STEP);
                 _cvQueue->push(stepStartTime + attackUs, targetDAC, CVEvent::CV_SMOOTH);
-            } else if (targetDAC < _currentDACValue && decay > 0) {
+            } else if (targetDAC < _currentDACValue && effects.decay > 0) {
                 _cvQueue->push(stepStartTime, _currentDACValue, CVEvent::CV_STEP);
                 _cvQueue->push(stepStartTime + decayUs, targetDAC, CVEvent::CV_SMOOTH);
             } else {
@@ -248,32 +351,25 @@ void StepSequencer::onStep() {
         }
     }
     
-    // Advance to next step
     _currentStep++;
-    if (_currentStep >= _pattern->getNumSteps()) {
-        _currentStep = 0;
-    }
+    if (_currentStep >= _pattern->getNumSteps()) _currentStep = 0;
 }
 
 void StepSequencer::processStepOutput() {
     uint64_t now = micros();
     
-    // ===== GATE OUTPUT =====
     if (_gateQueue) {
         while (!_gateQueue->isEmpty() && _gateQueue->peek().timestamp <= now) {
             const GateEvent& event = _gateQueue->peek();
             bool newGateState = (event.type == GateEvent::GATE_ON);
-            
             if (newGateState != _currentGateOutput) {
                 _currentGateOutput = newGateState;
                 _gateOutputChanged = true;
             }
-            
             _gateQueue->pop();
         }
     }
     
-    // ===== CV OUTPUT =====
     if (_cvQueue) {
         while (!_cvQueue->isEmpty() && _cvQueue->peek().timestamp <= now) {
             const CVEvent& event = _cvQueue->peek();
@@ -285,20 +381,15 @@ void StepSequencer::processStepOutput() {
         
         if (!_cvQueue->isEmpty()) {
             const CVEvent& nextEvent = _cvQueue->peek();
-            
             if (nextEvent.transitionMode == CVEvent::CV_SMOOTH && nextEvent.timestamp > now) {
                 if (_lastCVEventTimestamp > 0 && _lastCVEventTimestamp < nextEvent.timestamp) {
                     uint64_t totalDuration = nextEvent.timestamp - _lastCVEventTimestamp;
                     uint64_t elapsed = now - _lastCVEventTimestamp;
-                    
                     if (elapsed < totalDuration) {
                         float progress = (float)elapsed / (float)totalDuration;
                         uint16_t interpolatedValue = _lastCVEventValue + 
                             (uint16_t)(progress * (nextEvent.value - _lastCVEventValue));
-                        
-                        if (interpolatedValue != _currentDACValue) {
-                            _currentDACValue = interpolatedValue;
-                        }
+                        if (interpolatedValue != _currentDACValue) _currentDACValue = interpolatedValue;
                     }
                 }
             }
@@ -306,35 +397,24 @@ void StepSequencer::processStepOutput() {
     }
 }
 
-void StepSequencer::renderToDisplay() {
-    _ui.draw();
-}
-
-void StepSequencer::onEnterUI() {
-    _ui.enter();
-}
+void StepSequencer::renderToDisplay() { _ui.draw(); }
+void StepSequencer::onEnterUI() { _ui.enter(); }
 
 void StepSequencer::setMinCV(uint16_t minCV) {
-    if (minCV <= _maxCV) {
-        _minCV = minCV;
-    }
+    if (minCV <= _maxCV) _minCV = minCV;
 }
 
 void StepSequencer::setMaxCV(uint16_t maxCV) {
-    if (maxCV >= _minCV) {
-        _maxCV = maxCV;
-    }
+    if (maxCV >= _minCV) _maxCV = maxCV;
 }
 
 StepSequencer::CopiedStep StepSequencer::_copiedStep = {
     false, 0, 0, 0, 0, 0, 1, 0, 0, 0, false
 };
 
-void StepSequencer::copyStep(const StepPattern* pattern, uint8_t stepIndex,
-                              uint8_t trackIndex) {
+void StepSequencer::copyStep(const StepPattern* pattern, uint8_t stepIndex, uint8_t trackIndex) {
     if (!pattern) return;
     if (stepIndex >= pattern->getNumSteps()) return;
-
     _copiedStep.on          = pattern->getOn(stepIndex);
     _copiedStep.cv          = pattern->getCV(stepIndex);
     _copiedStep.probability = pattern->getProbability(stepIndex);
@@ -351,7 +431,6 @@ void StepSequencer::copyStep(const StepPattern* pattern, uint8_t stepIndex,
 void StepSequencer::pasteStep(StepPattern* pattern, uint8_t stepIndex) {
     if (!pattern || !_copiedStep.hasData) return;
     if (stepIndex >= pattern->getNumSteps()) return;
-
     pattern->setOn(stepIndex,          _copiedStep.on);
     pattern->setCV(stepIndex,          _copiedStep.cv);
     pattern->setProbability(stepIndex, _copiedStep.probability);

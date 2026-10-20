@@ -63,6 +63,12 @@ const SongData::Divider SongData::_dividers[NUM_DIVIDERS] = {
 // Constructor / Destructor / Linked List Helpers
 // ----------------------------------------------------------------------
 SongData::SongData() : _length(0), _head(nullptr), _tail(nullptr), _hasCopiedData(false) {
+    for (int i = 0; i < 6; i++) {
+        _effectX[i] = 0;
+        _effectY[i] = 0;
+        _magX[i] = 4;
+        _magY[i] = 4;
+    }
 }
 
 SongData::~SongData() {
@@ -77,7 +83,6 @@ void SongData::rebuildStepPointers() {
 }
 
 SongData::SongStep* SongData::getFreeNode() {
-    // Find a node in the pool that is not currently in the active _steps array
     for (int i = 0; i < MAX_SONG_LENGTH; i++) {
         bool isUsed = false;
         for (uint32_t j = 0; j < _length; j++) {
@@ -95,25 +100,29 @@ void SongData::init() {
     _length = DEFAULT_SONG_LENGTH;
     _hasCopiedData = false;
 
-    // Reset quantizers to default chromatic scale
     for (int i = 0; i < 4; i++) {
         _quantizers[i].generateChromatic(0, 4095, 61);
     }
 
-    // 1. Link the ENTIRE pool sequentially for initialization
+    for (int i = 0; i < 6; i++) {
+        _effectX[i] = 0;
+        _effectY[i] = 0;
+        _magX[i] = 4;
+        _magY[i] = 4;
+    }
+
     for (int i = 0; i < MAX_SONG_LENGTH - 1; i++) {
         _nodePool[i].next = &_nodePool[i + 1];
     }
     _nodePool[MAX_SONG_LENGTH - 1].next = nullptr;
 
-    // 2. Initialize the data for all nodes in the pool
     SongStep* curr = &_nodePool[0];
     for (int i = 0; i < MAX_SONG_LENGTH; i++) {
         curr->loopTarget = nullptr;
         curr->loopCount = 0;
 
         for (int track = 0; track < NUM_TRACKS; track++) {
-            curr->dividers[track] = 4; // Default x1
+            curr->dividers[track] = 4;
             curr->patterns[track].init(PATTERN_STEPS);
             for (int s = 0; s < PATTERN_STEPS; s++) {
                 curr->patterns[track].setOn(s, false);
@@ -129,12 +138,15 @@ void SongData::init() {
         curr = curr->next;
     }
 
-    // 3. Set up the active linked list boundaries (truncate to default length)
     _head = &_nodePool[0];
     _tail = &_nodePool[DEFAULT_SONG_LENGTH - 1];
     _tail->next = nullptr; 
 
     rebuildStepPointers();
+}
+
+void SongData::clear() {
+    init();
 }
 
 // ----------------------------------------------------------------------
@@ -145,7 +157,6 @@ bool SongData::insertStep(int index) {
     SongStep* newNode = getFreeNode();
     if (!newNode) return false;
 
-    // Initialize the new node
     newNode->loopTarget = nullptr;
     newNode->loopCount = 0;
 
@@ -155,18 +166,15 @@ bool SongData::insertStep(int index) {
     }
 
     if (index < 0) {
-        // Insert at head
         newNode->next = _head;
         _head = newNode;
         if (_length == 0) _tail = newNode;
     } else if (index >= (int)_length - 1) {
-        // Insert at tail
         newNode->next = nullptr;
         if (_tail) _tail->next = newNode;
         _tail = newNode;
         if (_length == 0) _head = newNode;
     } else {
-        // Insert in middle
         newNode->next = _steps[index]->next;
         _steps[index]->next = newNode;
     }
@@ -181,7 +189,6 @@ bool SongData::deleteStep(int index) {
 
     SongStep* toDelete = _steps[index];
 
-    // Clear any loops pointing to the deleted step
     for (uint32_t i = 0; i < _length; i++) {
         if (_steps[i]->loopTarget == toDelete) {
             _steps[i]->loopTarget = nullptr;
@@ -212,13 +219,11 @@ bool SongData::cloneStep(int index) {
     newNode->loopTarget = nullptr;
     newNode->loopCount = 0;
 
-    // Copy data
     for (int t = 0; t < NUM_TRACKS; t++) {
         newNode->dividers[t] = _steps[index]->dividers[t];
         newNode->patterns[t] = _steps[index]->patterns[t];
     }
 
-    // Link it after the specified index
     if (index >= (int)_length - 1) {
         newNode->next = nullptr;
         if (_tail) _tail->next = newNode;
@@ -234,7 +239,7 @@ bool SongData::cloneStep(int index) {
 }
 
 // ----------------------------------------------------------------------
-// File operations (streaming, version 6)
+// File operations (streaming, version 7)
 // ----------------------------------------------------------------------
 bool SongData::load(const char* filename, StepSequencer** sequencers) {
     if (!LittleFS.exists(filename)) return false;
@@ -258,9 +263,8 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
         file.close(); return false;
     }
     if (_length > MAX_SONG_LENGTH) _length = MAX_SONG_LENGTH;
-    if (_length == 0) _length = 1; // Safety fallback
+    if (_length == 0) _length = 1;
 
-    // Setup the linked list based on the loaded length
     _head = &_nodePool[0];
     for (uint32_t i = 0; i < _length - 1; i++) {
         _nodePool[i].next = &_nodePool[i + 1];
@@ -334,14 +338,13 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
             }
         }
     } else {
-        // Version 5 migration: no loops
         for (uint32_t step = 0; step < _length; step++) {
             _steps[step]->loopTarget = nullptr;
             _steps[step]->loopCount = 0;
         }
     }
 
-    // ---- Quantizers: enabled + notes (name, dac, inScale) ----
+    // ---- Quantizers ----
     for (int track = 0; track < 4; track++) {
         uint8_t enabled;
         if (file.read(&enabled, 1) != 1) { file.close(); return false; }
@@ -407,6 +410,26 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
         _quantizers[track].setRootIndex(rootIdx);
     }
 
+    // ---- Performance Effects (Version 7) ----
+    if (version >= 7) {
+        for (int i = 0; i < 6; i++) {
+            if (file.read(&_effectX[i], 1) != 1 ||
+                file.read(&_effectY[i], 1) != 1 ||
+                file.read((uint8_t*)&_magX[i], 1) != 1 ||
+                file.read((uint8_t*)&_magY[i], 1) != 1) {
+                file.close(); return false;
+            }
+        }
+    } else {
+        // Migration from older version
+        for (int i = 0; i < 6; i++) {
+            _effectX[i] = 0;
+            _effectY[i] = 0;
+            _magX[i] = 4;
+            _magY[i] = 4;
+        }
+    }
+
     file.close();
     return true;
 }
@@ -418,7 +441,7 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     needed += _length * NUM_TRACKS;
     needed += _length * NUM_TRACKS * PATTERN_STEPS * (2 + 1 + 1 + 1 + 1 + 1 + 1 + 1);
     needed += _length * NUM_TRACKS;
-    needed += _length * 2; // Loop data
+    needed += _length * 2; // Loops
     for (int track = 0; track < 4; track++) {
         needed += 1 + 1 + _quantizers[track].getNumNotes() * (4 + 2 + 1);
     }
@@ -427,6 +450,7 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     needed += NUM_TRACKS;
     needed += 4 * (2 + 2 + 1);
     needed += 4 * 2;
+    needed += 6 * 4; // Performance Effects
 
     size_t total = LittleFS.totalBytes();
     size_t used  = LittleFS.usedBytes();
@@ -483,7 +507,7 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
         }
     }
 
-    // ---- Song Loops (Version 6) ----
+    // ---- Song Loops ----
     for (uint32_t step = 0; step < _length; step++) {
         SongStep* s = _steps[step];
         uint8_t targetIdx = 0xFF;
@@ -550,6 +574,14 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
         w.put(rootIdx);
     }
 
+    // ---- Performance Effects ----
+    for (int i = 0; i < 6; i++) {
+        w.put(_effectX[i]);
+        w.put(_effectY[i]);
+        w.put(_magX[i]);
+        w.put(_magY[i]);
+    }
+
     if (!w.finish()) {
         file.close();
         return false;
@@ -571,7 +603,6 @@ bool SongData::exists(const char* filename) {
 void SongData::setLength(uint32_t length) {
     if (length >= 1 && length <= MAX_SONG_LENGTH) {
         if (length > _length) {
-            // Growing the song length. Just extend the tail.
             for (uint32_t i = _length; i < length; i++) {
                 SongStep* newNode = getFreeNode();
                 if (newNode) {
@@ -587,7 +618,6 @@ void SongData::setLength(uint32_t length) {
                 }
             }
         } else if (length < _length) {
-            // Shrinking the song length. Truncate the list.
             _tail = _steps[length - 1];
             _tail->next = nullptr;
         }
@@ -715,12 +745,9 @@ int SongData::getStepIndex(SongStep* target) const {
 bool SongData::setStepLoop(int stepIndex, int targetIndex, uint8_t count) {
     if (stepIndex < 0 || stepIndex >= (int)_length) return false;
     if (targetIndex < 0 || targetIndex >= (int)_length) return false;
-    if (targetIndex > stepIndex) return false; // Can only loop backwards
-    
-    // Max  7
+    if (targetIndex > stepIndex) return false;
     if (count < 1 || count > 7) return false;
 
-    // Check for nested loops
     for (int i = targetIndex; i < stepIndex; i++) {
         if (_steps[i]->loopTarget != nullptr) return false;
     }
