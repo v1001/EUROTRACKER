@@ -396,15 +396,16 @@ void SongSequencer::formatEffectValue(int track, bool isY, char* buf, size_t len
     if (joy == 0) { snprintf(buf, len, "---"); return; }
 
     int8_t mag = isY ? _songData.getMagY(track) : _songData.getMagX(track);
-    float scaled = (joy / 99.0f) * mag;
-    
+    float scaled = (joy / 99.0f) * mag;  // Combined joy*mag, range ±|mag|
+
+    if (scaled == 0) { snprintf(buf, len, "---"); return; }
+
     if (eff == 1) { // CV MOD
         snprintf(buf, len, "CV%+d", (int)(scaled * 205));
     } 
     else if (eff == 2) { // SLIDE
-        // Engine adds up to 24 * abs(mag) to the 0-99 parameter
         int offset = (int)(abs(scaled) * 24);
-        if (joy > 0) snprintf(buf, len, "ATK+%d", offset);
+        if (scaled > 0) snprintf(buf, len, "ATK+%d", offset);
         else snprintf(buf, len, "DCY+%d", offset);
     } 
     else if (eff == 3) { // RANDOM
@@ -415,13 +416,25 @@ void SongSequencer::formatEffectValue(int track, bool isY, char* buf, size_t len
         }
     } 
     else if (eff == 4) { // DENSITY
-        // Matches the engine: 1 + round(3 * mag/4)
         int n_max = round(1 + 3 * (abs(mag) / 4.0f));
-        if (joy > 0) {
-            int n = map((long)(scaled * 100), 1, 400, n_max, 1);
+        if (n_max < 1) n_max = 1;
+        
+        float abs_scaled = abs(scaled);
+        float abs_mag = abs(mag);
+        
+        if (scaled > 0) {
+            // Repeat mode: N goes from n_max (low) to 1 (high push)
+            float ratio = abs_scaled / abs_mag;  // 0 to 1
+            int n = (int)(n_max - (n_max - 1) * ratio + 0.5f);
+            if (n < 1) n = 1;
+            if (n > n_max) n = n_max;
             snprintf(buf, len, "DNS+%d", n);
         } else {
-            int n = map((long)(abs(scaled) * 100), 1, 400, 1, n_max);
+            // Skip mode: N goes from 1 (low) to n_max (high push)
+            float ratio = abs_scaled / abs_mag;  // 0 to 1
+            int n = (int)(1 + (n_max - 1) * ratio + 0.5f);
+            if (n < 1) n = 1;
+            if (n > n_max) n = n_max;
             snprintf(buf, len, "DNS-%d", n);
         }
     }
