@@ -37,10 +37,23 @@ char SongUI::getEffectChar(uint8_t eff) {
 
 void SongUI::draw(PerformanceState* perf) {
     bool isPerf = (perf && perf->active);
+    int rowsPerPage = isPerf ? 5 : ROWS_PER_PAGE;
     
+    // ===== Auto-scroll to follow the playing step =====
+    if (isPerf && _currentPlayingStep >= 0) {
+        int maxOffset = (int)_songData.getLength() - rowsPerPage;
+        if (maxOffset < 0) maxOffset = 0;
+        
+        int desiredOffset = _currentPlayingStep;
+        if (desiredOffset > maxOffset) desiredOffset = maxOffset;
+        
+        _scrollOffset = desiredOffset;
+    }
+
     _display.setTextSize(TEXT_SMALL);
     _display.setTextColor(_display.colorWhite());
     
+    // ===== Track headers =====
     int titleY = isPerf ? 2 : 0;
     for (int i = 0; i < NUM_TRACKS; i++) {
         bool muted = (isPerf && perf->trackMuted[i]);
@@ -86,9 +99,10 @@ void SongUI::draw(PerformanceState* perf) {
         _display.drawLine(0, 10, 128, 10, _display.colorWhite());
     }
     
-    for (int row = 0; row < ROWS_PER_PAGE; row++) {
+    // ===== Song step rows =====
+    for (int row = 0; row < rowsPerPage; row++) {
         int stepNum = _scrollOffset + row;
-        if (stepNum >= _songData.getLength()) break;
+        if (stepNum >= (int)_songData.getLength()) break;
         
         int y = 14 + row * 10;
         SongData::SongStep* step = _songData.getStep(stepNum);
@@ -118,27 +132,30 @@ void SongUI::draw(PerformanceState* perf) {
         }
     }
     
-    // Loop Lines
-    for (int row = 0; row < ROWS_PER_PAGE; row++) {
+    // ===== Loop lines =====
+    for (int row = 0; row < rowsPerPage; row++) {
         int stepNum = _scrollOffset + row;
-        if (stepNum >= _songData.getLength()) break;
+        if (stepNum >= (int)_songData.getLength()) break;
         
         SongData::SongStep* step = _songData.getStep(stepNum);
         if (step->loopTarget != nullptr) {
             int targetIdx = _songData.getStepIndex(step->loopTarget);
             int yCurrent = 14 + row * 10 + 4;
             
-            if (targetIdx >= _scrollOffset && targetIdx < _scrollOffset + ROWS_PER_PAGE) {
+            if (targetIdx >= _scrollOffset && targetIdx < _scrollOffset + rowsPerPage) {
+                // Target is on screen
                 int targetRow = targetIdx - _scrollOffset;
                 int yTarget = 14 + targetRow * 10 + 4;
                 _display.drawLine(0, yTarget, 0, yCurrent, _display.colorWhite());
                 _display.drawLine(0, yTarget, 2, yTarget, _display.colorWhite());
                 _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
             } else if (targetIdx < _scrollOffset) {
+                // Target above view
                 _display.drawLine(0, 10, 0, yCurrent, _display.colorWhite());
                 _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
                 _display.drawLine(0, 10, 2, 12, _display.colorWhite());
             } else {
+                // Target below view
                 _display.drawLine(0, yCurrent, 0, 53, _display.colorWhite());
                 _display.drawLine(0, yCurrent, 2, yCurrent, _display.colorWhite());
                 _display.drawLine(0, 53, 2, 51, _display.colorWhite());
@@ -146,6 +163,7 @@ void SongUI::draw(PerformanceState* perf) {
         }
     }
     
+    // ===== Cursor (normal mode only) =====
     if (!isPerf) {
         if (_cursorCol >= 1 && _cursorCol <= NUM_TRACKS) {
             int cursorX = _trackXPositions[_cursorCol - 1] - 1;
