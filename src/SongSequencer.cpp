@@ -8,7 +8,7 @@ SongSequencer::SongSequencer(DisplayManager& display, UserInput& userInput, Outp
       _songState(STATE_STOP), _currentPlayStep(0), _currentStepTickCounter(0), _stepTicksRemaining(0),
       _pendingStart(false), _pendingSequencer(false), _nextPlayStep(0), _openSequencerTrack(0),
       _gateQueues{}, _cvQueues{}, _lastDACValues{0, 0, 0, 0},
-      _lastPerfAnimTime(0), _lastJoyMoveTime(0), _perfAnimFrame(0), _perfLastEncAPos(0), _perfLastEncBPos(0), _perfPopupTime(0) {
+      _lastJoyMoveTime(0), _perfLastEncAPos(0), _perfLastEncBPos(0), _perfPopupTime(0) {
     
     for (int i = 0; i < NUM_TRACKS; i++) {
         _sequencers[i] = nullptr;
@@ -262,6 +262,14 @@ void SongSequencer::updateSequencersFromStep(int step, bool resetPosition) {
 }
 
 void SongSequencer::handleStateMachine() {
+    // NEW: Ignore the stop command if we just exited Performance Mode
+    if (_ignoreSaveStop) {
+        if (!_userInput.save_button.pressed) {
+            _ignoreSaveStop = false; // Clear flag once the button is released
+        }
+        return;
+    }
+
     if (_userInput.save_button.press_duration > 500) {
         _songState = STATE_STOP;
         _currentStepTickCounter = 0;
@@ -350,6 +358,8 @@ void SongSequencer::enterPerformanceMode() {
     _perfState.editYAxis = false;
     _perfState.selectedTrackX = 0;
     _perfState.selectedTrackY = 0;
+    _perfState.activeBank = 0;
+    _perfState.enterTime = millis();  // <-- Grace period start
     
     for (int i = 0; i < 6; i++) {
         _perfState.trackMuted[i] = false;
@@ -360,7 +370,13 @@ void SongSequencer::enterPerformanceMode() {
     _perfPopupText[0] = '\0';
     _lastJoyMoveTime = 0;
 
+    // Swallow the entry gesture's button events
+    _userInput.save_button.just_pressed = false;
+    _userInput.save_button.just_released = false;
+    _userInput.encoder_a_button.just_pressed = false;
     _userInput.encoder_b_button.just_pressed = false;
+    
+    _perfState.ignoreNextSaveRelease = true;
 }
 
 void SongSequencer::exitPerformanceMode() {
@@ -370,7 +386,7 @@ void SongSequencer::exitPerformanceMode() {
 
 const char* SongSequencer::getEffectName(uint8_t eff) {
     switch (eff) {
-        case 1: return "CV MOD"; // Changed from TRANSPOSE
+        case 1: return "CV MOD";
         case 2: return "SLIDE";
         case 3: return "RANDOM";
         case 4: return "DENSITY";
@@ -380,7 +396,7 @@ const char* SongSequencer::getEffectName(uint8_t eff) {
 
 const char* SongSequencer::getShortEffectDesc(uint8_t eff, bool pos) {
     switch (eff) {
-        case 1: return pos ? "+CV" : "-CV"; // Changed from Pitch
+        case 1: return pos ? "+CV" : "-CV";
         case 2: return pos ? "+Attack" : "+Decay";
         case 3: return pos ? "Rnd CV/Ratch" : "-Prob";
         case 4: return pos ? "Repeat steps" : "Skip steps";
@@ -389,13 +405,13 @@ const char* SongSequencer::getShortEffectDesc(uint8_t eff, bool pos) {
 }
 
 void SongSequencer::formatEffectValue(int track, bool isY, char* buf, size_t len) {
-    uint8_t eff = isY ? _songData.getEffectY(track) : _songData.getEffectX(track);
+    uint8_t eff = isY ? _songData.getEffectY(_perfState.activeBank, track) : _songData.getEffectX(_perfState.activeBank, track);
     if (eff == 0) { snprintf(buf, len, "---"); return; }
     
     int joy = isY ? _perfState.joyY : _perfState.joyX;
     if (joy == 0) { snprintf(buf, len, "---"); return; }
 
-    int8_t mag = isY ? _songData.getMagY(track) : _songData.getMagX(track);
+    int8_t mag = isY ? _songData.getMagY(_perfState.activeBank, track) : _songData.getMagX(_perfState.activeBank, track);
     float scaled = (joy / 99.0f) * mag;  // Combined joy*mag, range ±|mag|
 
     if (scaled == 0) { snprintf(buf, len, "---"); return; }
@@ -423,15 +439,13 @@ void SongSequencer::formatEffectValue(int track, bool isY, char* buf, size_t len
         float abs_mag = abs(mag);
         
         if (scaled > 0) {
-            // Repeat mode: N goes from n_max (low) to 1 (high push)
-            float ratio = abs_scaled / abs_mag;  // 0 to 1
+            float ratio = abs_scaled / abs_mag;
             int n = (int)(n_max - (n_max - 1) * ratio + 0.5f);
             if (n < 1) n = 1;
             if (n > n_max) n = n_max;
             snprintf(buf, len, "DNS+%d", n);
         } else {
-            // Skip mode: N goes from 1 (low) to n_max (high push)
-            float ratio = abs_scaled / abs_mag;  // 0 to 1
+            float ratio = abs_scaled / abs_mag;
             int n = (int)(1 + (n_max - 1) * ratio + 0.5f);
             if (n < 1) n = 1;
             if (n > n_max) n = n_max;
@@ -446,6 +460,19 @@ void SongSequencer::showPerfPopup(const char* text) {
 }
 
 void SongSequencer::updatePerformanceUI() {
+    // Drive the 3-second pattern/modifier auto-revert timer
+    _songUI.handlePerformanceTimeout(); 
+    // ===== GRACE PERIOD =====
+    // Ignore all input for 200ms after entering performance mode.
+    // This prevents the entry gesture (Save + Encoder B) from leaking
+    // any events (press, release, or click) into the performance UI.
+    if (millis() - _perfState.enterTime < 200) {
+        // Still update the animation and joystick centering during grace
+        _perfState.joyX = 0;
+        _perfState.joyY = 0;
+        return;
+    }
+
     int jx = _userInput.joystick.x_position;
     int jy = _userInput.joystick.y_position;
     
@@ -483,22 +510,31 @@ void SongSequencer::updatePerformanceUI() {
             _perfState.editMode = true;
             _perfState.editYAxis = true;
         }
+        
+        // Cycle Bank on Save Release
+        if (_userInput.save_button.just_released) {
+            if (_perfState.ignoreNextSaveRelease) {
+                _perfState.ignoreNextSaveRelease = false;
+            } else {
+                _perfState.activeBank = (_perfState.activeBank + 1) % 4;
+                char buf[16];
+                snprintf(buf, sizeof(buf), "SCENE FX%d", _perfState.activeBank + 1);
+                showPerfPopup(buf);
+            }
+        }
     } else {
         // ===== EDIT MODE =====
         int track = _perfState.editYAxis ? _perfState.selectedTrackY : _perfState.selectedTrackX;
-        uint8_t eff = _perfState.editYAxis ? _songData.getEffectY(track) : _songData.getEffectX(track);
-        int8_t mag = _perfState.editYAxis ? _songData.getMagY(track) : _songData.getMagX(track);
+        uint8_t eff = _perfState.editYAxis ? _songData.getEffectY(_perfState.activeBank, track) : _songData.getEffectX(_perfState.activeBank, track);
+        int8_t mag = _perfState.editYAxis ? _songData.getMagY(_perfState.activeBank, track) : _songData.getMagX(_perfState.activeBank, track);
         bool isCv = (track < 4);
 
         // 1. Effect Selection (Encoder A)
         if (_userInput.encoder_a.position != _perfLastEncAPos) {
             int delta = (_userInput.encoder_a.position > _perfLastEncAPos) ? 1 : -1;
             
-            // Get the effect currently assigned to the OTHER axis
-            uint8_t otherEff = _perfState.editYAxis ? _songData.getEffectX(track) : _songData.getEffectY(track);
+            uint8_t otherEff = _perfState.editYAxis ? _songData.getEffectX(_perfState.activeBank, track) : _songData.getEffectY(_perfState.activeBank, track);
             
-            // Cycle until we find an effect that is valid for this track type 
-            // AND is not currently used by the other axis.
             if (delta > 0) {
                 do { 
                     eff = (eff + 1) % 5; 
@@ -509,8 +545,8 @@ void SongSequencer::updatePerformanceUI() {
                 } while ((!isCv && (eff == 1 || eff == 2)) || (eff != 0 && eff == otherEff));
             }
             
-            if (_perfState.editYAxis) _songData.setEffectY(track, eff);
-            else _songData.setEffectX(track, eff);
+            if (_perfState.editYAxis) _songData.setEffectY(_perfState.activeBank, track, eff);
+            else _songData.setEffectX(_perfState.activeBank, track, eff);
             _perfLastEncAPos = _userInput.encoder_a.position;
         }
 
@@ -522,22 +558,16 @@ void SongSequencer::updatePerformanceUI() {
             if (mag < -4) mag = 4;
             if (mag == 0) mag = (delta > 0) ? 1 : -1;
             
-            if (_perfState.editYAxis) _songData.setMagY(track, mag);
-            else _songData.setMagX(track, mag);
+            if (_perfState.editYAxis) _songData.setMagY(_perfState.activeBank, track, mag);
+            else _songData.setMagX(_perfState.activeBank, track, mag);
             _perfLastEncBPos = _userInput.encoder_b.position;
         }
 
-        // 3. Confirm and Exit (Click either encoder)
+        // 3. Confirm and Exit
         if (_userInput.encoder_a_button.just_pressed || _userInput.encoder_b_button.just_pressed) {
             _perfState.editMode = false;
             markProjectDirty();
         }
-    }
-
-    // Animation
-    if (millis() - _lastPerfAnimTime > 100) {
-        _lastPerfAnimTime = millis();
-        _perfAnimFrame = (_perfAnimFrame + 1) % 8;
     }
 }
 
@@ -546,13 +576,16 @@ void SongSequencer::drawPerformanceUI() {
     _songUI.setPlaybackProgress(100*(float)_currentStepTickCounter/(float)_stepTicksRemaining);
     _songUI.draw(&_perfState);
 
-    _display.drawStaircase(2, 0, _perfAnimFrame);
+    // Draw FX Bank indicator instead of Staircase
+    char fxBuf[8];
+    snprintf(fxBuf, sizeof(fxBuf), "FX%d", _perfState.activeBank + 1);
+    _display.printAt(fxBuf, 2, 2, ALIGN_LEFT);
 
     if (_perfState.editMode) {
         // ===== EDIT MODE POPUP =====
         int track = _perfState.editYAxis ? _perfState.selectedTrackY : _perfState.selectedTrackX;
-        uint8_t eff = _perfState.editYAxis ? _songData.getEffectY(track) : _songData.getEffectX(track);
-        int8_t mag = _perfState.editYAxis ? _songData.getMagY(track) : _songData.getMagX(track);
+        uint8_t eff = _perfState.editYAxis ? _songData.getEffectY(_perfState.activeBank, track) : _songData.getEffectX(_perfState.activeBank, track);
+        int8_t mag = _perfState.editYAxis ? _songData.getMagY(_perfState.activeBank, track) : _songData.getMagX(_perfState.activeBank, track);
 
         _display.fillRect(2, 4, 124, 56, _display.colorWhite());
         _display.setTextColor(_display.colorBlack());
@@ -592,19 +625,16 @@ void SongSequencer::drawPerformanceUI() {
         _display.fillRect(0, 0, 128, 64, _display.colorWhite());
         _display.setTextColor(_display.colorBlack());
         
-        // 1. Column Headers (aligned with the columns below)
+        // 1. Column Headers
         char buf[16];
         snprintf(buf, sizeof(buf), "X=%+d", _perfState.joyX);
-        _display.printAt(buf, 32, 2, ALIGN_LEFT);  // Aligns with X values
+        _display.printAt(buf, 32, 2, ALIGN_LEFT);
         snprintf(buf, sizeof(buf), "Y=%+d", _perfState.joyY);
-        _display.printAt(buf, 80, 2, ALIGN_LEFT);  // Aligns with Y values
+        _display.printAt(buf, 80, 2, ALIGN_LEFT);
         
         // 2. Grid Lines
-        // Horizontal line separating headers from the table
         _display.drawLine(0, 12, 127, 12, _display.colorBlack());
-        // Vertical line separating track numbers from X column
         _display.drawLine(24, 0, 24, 63, _display.colorBlack());
-        // Vertical line separating X and Y columns
         _display.drawLine(74, 0, 74, 63, _display.colorBlack());
         
         // 3. The 6 track rows
@@ -613,7 +643,7 @@ void SongSequencer::drawPerformanceUI() {
             formatEffectValue(i, false, valX, sizeof(valX));
             formatEffectValue(i, true, valY, sizeof(valY));
             
-            int y = 14 + i * 8; // 8-pixel row spacing
+            int y = 14 + i * 8;
             snprintf(label, sizeof(label), "T%d", i+1);
             
             _display.printAt(label, 4, y, ALIGN_LEFT);

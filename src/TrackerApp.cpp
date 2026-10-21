@@ -79,16 +79,24 @@ void TrackerApp::update(uint64_t quarterNoteTimeUs) {
             _currentUIState = STATE_PERFORMANCE_MODE;
             _songSequencer.enterPerformanceMode();
         }
-        // Exit Performance Mode (Save button)
-        else if (_currentUIState == STATE_PERFORMANCE_MODE && _userInput.save_button.just_pressed) {
+        // Exit Performance Mode (Long Press Save, 500ms)
+        else if (_currentUIState == STATE_PERFORMANCE_MODE && 
+                 _userInput.save_button.press_duration > 500) {
             _lastStateTransitionTime = now;
             _songSequencer.exitPerformanceMode();
+            
+            // Tell the sequencer to ignore the stop command while the button is held
+            _songSequencer.ignoreSaveStop(); 
+            
             _currentUIState = STATE_SONG_UI;
             _songSequencer.resetEncoderTracking();
             
-            // Consume the event so it doesn't toggle playback on the next tick
+            // Consume the events so they don't toggle playback on the next tick
             _userInput.save_button.just_pressed = false;
             _userInput.save_button.just_released = false;
+            
+            // Return immediately so we don't execute the switch statement this tick
+            return; 
         }
     }
 

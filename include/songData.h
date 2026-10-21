@@ -9,12 +9,13 @@
 class SongData {
 public:
     static const uint32_t FILE_MAGIC = 0x534F4E47;   // "SONG"
-    static const uint8_t FILE_VERSION = 7;           // Bumped for performance effects
+    static const uint8_t FILE_VERSION = 8;           // Bumped for 4 FX banks
 
     static const uint32_t MAX_SONG_LENGTH = 64;
     static const uint32_t DEFAULT_SONG_LENGTH = 4;
     static const int NUM_TRACKS = 6;
     static const int PATTERN_STEPS = 32;
+    static const int NUM_FX_BANKS = 4;
 
     struct Divider {
         const char* text;
@@ -81,18 +82,38 @@ public:
     bool setStepLoop(int stepIndex, int targetIndex, uint8_t count);
     void clearStepLoop(int stepIndex);
 
-    // Performance Effects Management
-    uint8_t getEffectX(int track) const { return (track >= 0 && track < 6) ? _effectX[track] : 0; }
-    void setEffectX(int track, uint8_t effect) { if (track >= 0 && track < 6) _effectX[track] = effect; }
+    // Performance Effects Management (4 Banks)
+    uint8_t getEffectX(int bank, int track) const { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) return _effectX[bank][track]; 
+        return 0; 
+    }
+    void setEffectX(int bank, int track, uint8_t effect) { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) _effectX[bank][track] = effect; 
+    }
     
-    uint8_t getEffectY(int track) const { return (track >= 0 && track < 6) ? _effectY[track] : 0; }
-    void setEffectY(int track, uint8_t effect) { if (track >= 0 && track < 6) _effectY[track] = effect; }
+    uint8_t getEffectY(int bank, int track) const { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) return _effectY[bank][track]; 
+        return 0; 
+    }
+    void setEffectY(int bank, int track, uint8_t effect) { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) _effectY[bank][track] = effect; 
+    }
     
-    int8_t getMagX(int track) const { return (track >= 0 && track < 6) ? _magX[track] : 0; }
-    void setMagX(int track, int8_t mag) { if (track >= 0 && track < 6) _magX[track] = mag; }
+    int8_t getMagX(int bank, int track) const { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) return _magX[bank][track]; 
+        return 4; 
+    }
+    void setMagX(int bank, int track, int8_t mag) { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) _magX[bank][track] = mag; 
+    }
     
-    int8_t getMagY(int track) const { return (track >= 0 && track < 6) ? _magY[track] : 0; }
-    void setMagY(int track, int8_t mag) { if (track >= 0 && track < 6) _magY[track] = mag; }
+    int8_t getMagY(int bank, int track) const { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) return _magY[bank][track]; 
+        return 4; 
+    }
+    void setMagY(int bank, int track, int8_t mag) { 
+        if (bank >= 0 && bank < NUM_FX_BANKS && track >= 0 && track < NUM_TRACKS) _magY[bank][track] = mag; 
+    }
 
 private:
     static const int NUM_MELODIC_TRACKS = 4;
@@ -111,11 +132,11 @@ private:
 
     Quantizer _quantizers[4];
 
-    // Performance Effects
-    uint8_t _effectX[6]; // 0=None, 1=Transpose, 2=Slide, 3=Random, 4=Density
-    uint8_t _effectY[6];
-    int8_t _magX[6];     // -4 to +4
-    int8_t _magY[6];
+    // Performance Effects (4 Banks)
+    uint8_t _effectX[NUM_FX_BANKS][NUM_TRACKS];
+    uint8_t _effectY[NUM_FX_BANKS][NUM_TRACKS];
+    int8_t _magX[NUM_FX_BANKS][NUM_TRACKS];
+    int8_t _magY[NUM_FX_BANKS][NUM_TRACKS];
 
     void rebuildStepPointers();
     SongStep* getFreeNode();

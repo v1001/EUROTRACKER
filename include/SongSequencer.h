@@ -16,10 +16,15 @@ struct PerformanceState {
     
     int8_t selectedTrackX = 0;
     int8_t selectedTrackY = 0;
+    int8_t activeBank = 0; // 0 to 3
+    
     bool trackMuted[6] = {false};
     
     int8_t joyX = 0;
     int8_t joyY = 0;
+
+    uint32_t enterTime = 0; 
+    bool ignoreNextSaveRelease = false;
 };
 
 class SongSequencer {
@@ -85,6 +90,8 @@ public:
     void markProjectDirty();
     void previewDAC(int track, uint16_t value);
 
+    void ignoreSaveStop() { _ignoreSaveStop = true; }
+
 private:
     static const int NUM_TRACKS = 6;
     static const char* PROJECT_FILENAME;
@@ -101,9 +108,7 @@ private:
     uint8_t _stepLoopCounters[MAX_SONG_LENGTH];
 
     PerformanceState _perfState;
-    unsigned long _lastPerfAnimTime;
     unsigned long _lastJoyMoveTime;
-    uint8_t _perfAnimFrame;
     long _perfLastEncAPos;
     long _perfLastEncBPos;
     char _perfPopupText[32];
@@ -136,6 +141,7 @@ private:
     bool _sequencerModeActive;
 
     bool _syncStart;
+    bool _ignoreSaveStop = false;
 };
 
 #endif
