@@ -28,6 +28,8 @@ public:
     void resetEncoderTracking();
     void resetCursor() { _cursorRow = 0; _cursorCol = 1; _scrollOffset = 0; }
 
+    void handlePerformanceTimeout();
+
     void setCurrentPlayingStep(int step) { _currentPlayingStep = step; }
     void setPlaybackProgress(int percent) { _playbackProgress = percent; }
 

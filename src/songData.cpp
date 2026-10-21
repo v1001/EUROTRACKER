@@ -63,11 +63,13 @@ const SongData::Divider SongData::_dividers[NUM_DIVIDERS] = {
 // Constructor / Destructor / Linked List Helpers
 // ----------------------------------------------------------------------
 SongData::SongData() : _length(0), _head(nullptr), _tail(nullptr), _hasCopiedData(false) {
-    for (int i = 0; i < 6; i++) {
-        _effectX[i] = 0;
-        _effectY[i] = 0;
-        _magX[i] = 4;
-        _magY[i] = 4;
+    for (int b = 0; b < NUM_FX_BANKS; b++) {
+        for (int i = 0; i < NUM_TRACKS; i++) {
+            _effectX[b][i] = 0;
+            _effectY[b][i] = 0;
+            _magX[b][i] = 4;
+            _magY[b][i] = 4;
+        }
     }
 }
 
@@ -104,11 +106,13 @@ void SongData::init() {
         _quantizers[i].generateChromatic(0, 4095, 61);
     }
 
-    for (int i = 0; i < 6; i++) {
-        _effectX[i] = 0;
-        _effectY[i] = 0;
-        _magX[i] = 4;
-        _magY[i] = 4;
+    for (int b = 0; b < NUM_FX_BANKS; b++) {
+        for (int i = 0; i < NUM_TRACKS; i++) {
+            _effectX[b][i] = 0;
+            _effectY[b][i] = 0;
+            _magX[b][i] = 4;
+            _magY[b][i] = 4;
+        }
     }
 
     for (int i = 0; i < MAX_SONG_LENGTH - 1; i++) {
@@ -239,7 +243,7 @@ bool SongData::cloneStep(int index) {
 }
 
 // ----------------------------------------------------------------------
-// File operations (streaming, version 7)
+// File operations (streaming, version 8)
 // ----------------------------------------------------------------------
 bool SongData::load(const char* filename, StepSequencer** sequencers) {
     if (!LittleFS.exists(filename)) return false;
@@ -410,23 +414,37 @@ bool SongData::load(const char* filename, StepSequencer** sequencers) {
         _quantizers[track].setRootIndex(rootIdx);
     }
 
-    // ---- Performance Effects (Version 7) ----
-    if (version >= 7) {
-        for (int i = 0; i < 6; i++) {
-            if (file.read(&_effectX[i], 1) != 1 ||
-                file.read(&_effectY[i], 1) != 1 ||
-                file.read((uint8_t*)&_magX[i], 1) != 1 ||
-                file.read((uint8_t*)&_magY[i], 1) != 1) {
-                file.close(); return false;
+    // ---- Performance Effects (Version 8) ----
+    // Defaults for all banks
+    for (int b = 0; b < NUM_FX_BANKS; b++) {
+        for (int i = 0; i < NUM_TRACKS; i++) {
+            _effectX[b][i] = 0;
+            _effectY[b][i] = 0;
+            _magX[b][i] = 4;
+            _magY[b][i] = 4;
+        }
+    }
+
+    if (version >= 8) {
+        for (int b = 0; b < NUM_FX_BANKS; b++) {
+            for (int i = 0; i < NUM_TRACKS; i++) {
+                if (file.read(&_effectX[b][i], 1) != 1 ||
+                    file.read(&_effectY[b][i], 1) != 1 ||
+                    file.read((uint8_t*)&_magX[b][i], 1) != 1 ||
+                    file.read((uint8_t*)&_magY[b][i], 1) != 1) {
+                    file.close(); return false;
+                }
             }
         }
-    } else {
-        // Migration from older version
-        for (int i = 0; i < 6; i++) {
-            _effectX[i] = 0;
-            _effectY[i] = 0;
-            _magX[i] = 4;
-            _magY[i] = 4;
+    } else if (version == 7) {
+        // Migrate Version 7 into Bank 0
+        for (int i = 0; i < NUM_TRACKS; i++) {
+            if (file.read(&_effectX[0][i], 1) != 1 ||
+                file.read(&_effectY[0][i], 1) != 1 ||
+                file.read((uint8_t*)&_magX[0][i], 1) != 1 ||
+                file.read((uint8_t*)&_magY[0][i], 1) != 1) {
+                file.close(); return false;
+            }
         }
     }
 
@@ -450,7 +468,7 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
     needed += NUM_TRACKS;
     needed += 4 * (2 + 2 + 1);
     needed += 4 * 2;
-    needed += 6 * 4; // Performance Effects
+    needed += NUM_FX_BANKS * NUM_TRACKS * 4; // 4 banks * 6 tracks * 4 bytes
 
     size_t total = LittleFS.totalBytes();
     size_t used  = LittleFS.usedBytes();
@@ -574,12 +592,14 @@ bool SongData::save(const char* filename, StepSequencer** sequencers) {
         w.put(rootIdx);
     }
 
-    // ---- Performance Effects ----
-    for (int i = 0; i < 6; i++) {
-        w.put(_effectX[i]);
-        w.put(_effectY[i]);
-        w.put(_magX[i]);
-        w.put(_magY[i]);
+    // ---- Performance Effects (4 Banks) ----
+    for (int b = 0; b < NUM_FX_BANKS; b++) {
+        for (int i = 0; i < NUM_TRACKS; i++) {
+            w.put(_effectX[b][i]);
+            w.put(_effectY[b][i]);
+            w.put(_magX[b][i]);
+            w.put(_magY[b][i]);
+        }
     }
 
     if (!w.finish()) {

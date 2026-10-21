@@ -198,15 +198,15 @@ void StepSequencer::processEffects(StepEffects& effects) {
 
     // Apply X axis
     if (_songData) {
-        uint8_t effX = _songData->getEffectX(_trackIndex);
-        int8_t magX = _songData->getMagX(_trackIndex);
+        uint8_t effX = _songData->getEffectX(_perfState->activeBank, _trackIndex);
+        int8_t magX = _songData->getMagX(_perfState->activeBank, _trackIndex);
         applyEffect(effX, magX, _perfState->joyX, effects);
     }
 
     // Apply Y axis
     if (_songData) {
-        uint8_t effY = _songData->getEffectY(_trackIndex);
-        int8_t magY = _songData->getMagY(_trackIndex);
+        uint8_t effY = _songData->getEffectY(_perfState->activeBank, _trackIndex);
+        int8_t magY = _songData->getMagY(_perfState->activeBank, _trackIndex);
         applyEffect(effY, magY, _perfState->joyY, effects);
     }
 }

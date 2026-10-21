@@ -27,7 +27,7 @@ void SongUI::update() {
 
 char SongUI::getEffectChar(uint8_t eff) {
     switch (eff) {
-        case 1: return 'C'; // Changed from 'T'
+        case 1: return 'C';
         case 2: return 'S';
         case 3: return 'R';
         case 4: return 'D';
@@ -64,8 +64,8 @@ void SongUI::draw(PerformanceState* perf) {
         if (muted) {
             sprintf(label, "M ");
         } else if (isPerf) {
-            char ex = getEffectChar(_songData.getEffectX(i));
-            char ey = getEffectChar(_songData.getEffectY(i));
+            char ex = getEffectChar(_songData.getEffectX(perf->activeBank, i));
+            char ey = getEffectChar(_songData.getEffectY(perf->activeBank, i));
             if (ex == '-' && ey == '-') {
                 sprintf(label, "T%d", i + 1);
             } else {
@@ -313,4 +313,13 @@ void SongUI::drawProgressBar(int x, int y, int width, int height, int percent) {
     _display.drawRect(x, y, width, height, _display.colorWhite());
     int fillWidth = (width - 2) * percent / 100;
     if (fillWidth > 0) _display.fillRect(x + 1, y + 1, fillWidth, height - 2, _display.colorWhite());
+}
+
+void SongUI::handlePerformanceTimeout() {
+    if (!_showPattern) {
+        unsigned long lastActivity = max(_lastEncoderATime, _lastEncoderBTime);
+        if (millis() - lastActivity >= 3000) {
+            _showPattern = true;
+        }
+    }
 }
