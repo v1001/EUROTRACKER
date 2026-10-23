@@ -116,7 +116,6 @@ void StepEditMenu::handleEncoders() {
 void StepEditMenu::handleButtons() {
     if (!_pattern) return;
 
-    // 1. Copy (Encoder A)
     if (_userInput.encoder_a_button.just_released) {
         StepSequencer::copyStep(_pattern, (uint8_t)_selectedStep, (uint8_t)_track);
         char buf[24];
@@ -124,7 +123,6 @@ void StepEditMenu::handleButtons() {
         showPopup(buf);
     }
 
-    // 2. Paste (Encoder B)
     if (_userInput.encoder_b_button.just_released) {
         if (StepSequencer::hasCopiedStep()) {
             uint8_t srcStep = StepSequencer::getCopiedSourceStep();
@@ -138,12 +136,15 @@ void StepEditMenu::handleButtons() {
         }
     }
 
-    // 3. Toggle (Joystick Click)
-    // Only process if no encoder was clicked this frame
     if (_userInput.joystick_button.just_released) {
         bool newOn = !_pattern->getOn(_selectedStep);
         _pattern->setOn(_selectedStep, newOn);
         markDirty();
+    }
+
+    // Exit submenu on Save short press release
+    if (_userInput.save_button.just_released) {
+        _exitRequested = true;
     }
 }
 
